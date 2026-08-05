@@ -13,9 +13,11 @@ export default function TopBar() {
               <Chevron className="h-6 w-5 text-white" />
             </span>
             <div className="min-w-0 leading-tight">
-              <div className="truncate text-[17px] font-extrabold tracking-[0.04em]">B-WING</div>
-              <div className="truncate text-[10px] font-medium tracking-[0.14em] text-white/70">
-                KIRAN CLASSIC TOWERS 3
+              <div className="truncate text-[15px] font-extrabold tracking-tight sm:text-[17px]">
+                KCT-3 B-Wing
+              </div>
+              <div className="truncate text-[10px] font-medium tracking-[0.08em] text-white/70 sm:tracking-[0.12em]">
+                MANAGEMENT SYSTEM
               </div>
             </div>
           </Link>

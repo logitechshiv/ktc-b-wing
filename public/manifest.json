@@ -1,7 +1,7 @@
 {
-  "name": "KCT-3 B-Wing Maintenance",
-  "short_name": "B-Wing",
-  "description": "Kiran Classic Towers-3, B-Wing — Society Maintenance",
+  "name": "KCT-3 B-Wing Management System",
+  "short_name": "KCT-3 B-Wing",
+  "description": "Kiran Classic Towers-3, B-Wing — Society Management System",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

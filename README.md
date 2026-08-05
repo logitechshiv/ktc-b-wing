@@ -1,4 +1,4 @@
-# KCT-3 B-Wing — Society Maintenance PWA (frontend starter)
+# KCT-3 B-Wing Management System
 
 Installable PWA for **Kiran Classic Towers-3, B-Wing**. This is the **frontend phase**: a fully clickable UI running on **mock data** (no backend yet), so the committee can approve the look and flow before any database work.
 

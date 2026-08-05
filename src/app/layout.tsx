@@ -4,10 +4,10 @@ import Providers from "@/components/Providers";
 import AppShell from "@/components/AppShell";
 
 export const metadata: Metadata = {
-  title: "KCT-3 B-Wing — Maintenance",
-  description: "Kiran Classic Towers-3, B-Wing — Society Maintenance",
+  title: "KCT-3 B-Wing Management System",
+  description: "Kiran Classic Towers-3, B-Wing — Society Management System",
   manifest: "/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "B-Wing" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "KCT-3 B-Wing" },
   icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
 };
 
