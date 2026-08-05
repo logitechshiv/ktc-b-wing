@@ -31,6 +31,14 @@ const OWNERS = [
 // 6 unsold (builder) flats
 const UNSOLD = new Set(["B-904", "B-1004", "B-1104", "B-1203", "B-1303", "B-1304"]);
 
+/** Sample flats currently on rent (owner remains for dues) */
+const ON_RENT: Record<string, { en: string; gu: string; phone: string }> = {
+  "B-102": { en: "Mehul Joshi", gu: "મેહુલ જોશી", phone: "9876512345" },
+  "B-205": { en: "Sneha Raval", gu: "સ્નેહા રાવલ", phone: "9823456789" },
+  "B-403": { en: "Kaushik Patel", gu: "કૌશિક પટેલ", phone: "9898765432" },
+  "B-701": { en: "Priya Shah", gu: "પ્રિયા શાહ", phone: "9811223344" },
+};
+
 export const flats: Flat[] = (() => {
   const list: Flat[] = [];
   let i = 0;
@@ -40,6 +48,7 @@ export const flats: Flat[] = (() => {
       const flatNo = "B-" + num;
       const unsold = UNSOLD.has(flatNo);
       const owner = OWNERS[i % OWNERS.length];
+      const rent = !unsold ? ON_RENT[flatNo] : undefined;
       list.push({
         id: flatNo,
         wing: "B",
@@ -50,6 +59,10 @@ export const flats: Flat[] = (() => {
         ownerNameGu: unsold ? "કોઈ માલિક નથી" : owner.gu,
         ownerPhone: unsold ? "" : "98" + String(250000000 + i * 13337).slice(0, 8),
         status: unsold ? "unsold" : "sold",
+        onRent: !!rent,
+        renterName: rent?.en,
+        renterNameGu: rent?.gu,
+        renterPhone: rent?.phone,
       });
       i++;
     }

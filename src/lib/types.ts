@@ -13,6 +13,11 @@ export interface Flat {
   ownerNameGu: string;
   ownerPhone: string;
   status: FlatStatus;
+  /** Sold flat currently given on rent */
+  onRent?: boolean;
+  renterName?: string;
+  renterNameGu?: string;
+  renterPhone?: string;
 }
 
 export interface ChargeRound {
