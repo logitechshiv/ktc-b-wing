@@ -9,6 +9,8 @@ export interface Flat {
   floor: number;
   unit: number;
   ownerName: string;
+  /** Gujarati display name */
+  ownerNameGu: string;
   ownerPhone: string;
   status: FlatStatus;
 }

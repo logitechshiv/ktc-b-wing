@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { flats } from "@/lib/mock-data";
+import { formatPhone } from "@/lib/format";
 import type { Flat } from "@/lib/types";
 
 const BADGE_COLORS = [
@@ -14,12 +15,6 @@ const BADGE_COLORS = [
   "bg-indigo-500",
 ];
 
-function formatPhone(phone: string) {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length === 10) return `${digits.slice(0, 5)} ${digits.slice(5)}`;
-  return phone;
-}
-
 function badgeColor(unit: number, floor: number) {
   return BADGE_COLORS[(floor * 4 + unit - 1) % BADGE_COLORS.length];
 }
@@ -30,11 +25,13 @@ export default function FlatsPage() {
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
+    const queryRaw = q.trim();
     if (!query) return flats;
     return flats.filter(
       (f) =>
         f.flatNo.toLowerCase().includes(query) ||
         f.ownerName.toLowerCase().includes(query) ||
+        f.ownerNameGu.includes(queryRaw) ||
         f.ownerPhone.includes(query.replace(/\s/g, ""))
     );
   }, [q]);
@@ -63,7 +60,7 @@ export default function FlatsPage() {
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search flat no., owner or phone"
+        placeholder="Search flat no., owner (EN/GU) or phone"
         className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-brand"
       />
 
@@ -94,32 +91,43 @@ export default function FlatsPage() {
 
                 return (
                   <li key={f.id} className="px-3 py-3 sm:px-4">
-                    <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                    {/* Names get the full first row */}
+                    <div className="min-w-0">
+                      {unsold ? (
+                        <div className="font-medium text-slate-400">કોઈ માલિક નથી</div>
+                      ) : (
+                        <>
+                          <div className="text-[15px] font-bold leading-snug text-navy break-words">
+                            {f.ownerName}
+                          </div>
+                          <div className="mt-0.5 text-sm font-medium leading-snug text-slate-600 break-words">
+                            {f.ownerNameGu}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Flat no · phone · status on second row */}
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
                       <span
                         className={
-                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white " +
+                          "flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[11px] font-bold text-white " +
                           badgeColor(f.unit, f.floor)
                         }
                       >
                         {unitLabel}
                       </span>
 
-                      <div className="min-w-0 flex-1 font-semibold text-navy">
-                        {unsold ? (
-                          <span className="font-medium text-slate-400">કોઈ માલિક નથી</span>
-                        ) : (
-                          f.ownerName
-                        )}
-                      </div>
-
-                      {!unsold && f.ownerPhone && (
+                      {!unsold && f.ownerPhone ? (
                         <button
                           type="button"
                           onClick={() => copyPhone(f)}
                           title="Copy number"
                           className="group inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-left transition hover:bg-brand/5"
                         >
-                          <span className="text-sm font-medium tabular-nums text-brand">{formatPhone(f.ownerPhone)}</span>
+                          <span className="text-sm font-medium tabular-nums text-brand">
+                            {formatPhone(f.ownerPhone)}
+                          </span>
                           <span className="text-slate-400 group-hover:text-brand" aria-hidden>
                             {copiedId === f.id ? (
                               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-emerald-500" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -134,7 +142,7 @@ export default function FlatsPage() {
                           </span>
                           <span className="sr-only">{copiedId === f.id ? "Copied" : "Copy number"}</span>
                         </button>
-                      )}
+                      ) : null}
 
                       <span
                         className={
@@ -147,8 +155,9 @@ export default function FlatsPage() {
                         {unsold ? "Unsold" : "Sold"}
                       </span>
                     </div>
+
                     {!unsold && f.ownerPhone && copiedId === f.id && (
-                      <div className="mt-1 pl-12 text-[11px] font-medium text-emerald-600">Number copied</div>
+                      <div className="mt-1 text-[11px] font-medium text-emerald-600">Number copied</div>
                     )}
                   </li>
                 );

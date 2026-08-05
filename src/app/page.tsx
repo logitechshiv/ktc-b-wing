@@ -5,6 +5,7 @@ import { inr } from "@/lib/format";
 import ExpenseRow from "@/components/ExpenseRow";
 import SummaryTile from "@/components/SummaryTile";
 import NoticeCard from "@/components/NoticeCard";
+import CommonExpenseSplit from "@/components/CommonExpenseSplit";
 
 export default function Dashboard() {
   const s = stats();
@@ -19,38 +20,35 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
-      <section className="overflow-hidden rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80">
-        <h2 className="mb-3.5 text-[17px] font-bold tracking-tight text-navy">Summary</h2>
+      <section className="overflow-hidden rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80 sm:p-5">
+        <h2 className="mb-4 text-[17px] font-bold tracking-tight text-navy">Summary</h2>
 
-        <div className="space-y-2.5">
-          <div className="grid grid-cols-3 gap-2.5">
-            <SummaryTile value={inr(s.balance)} label="Total Balance" icon="⚖️" tone="violet" />
+        <div className="space-y-3">
+          {/* Hero: Total Balance — full width so amount isn’t cramped */}
+          <SummaryTile value={inr(s.balance)} label="Total Balance" icon="⚖️" tone="violet" wide />
+
+          {/* Always 2 columns on mobile — never 3 */}
+          <div className="grid grid-cols-2 gap-3">
             <SummaryTile value={inr(s.totalCollected)} label="Collected" icon="📥" tone="green" />
             <SummaryTile value={inr(s.totalExpense)} label="Expense" icon="📤" tone="rose" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5">
             <SummaryTile value={inr(s.cash)} label="Cash in Hand" icon="💵" tone="amber" />
             <SummaryTile value={inr(s.bank)} label="Bank Balance" icon="🏦" tone="sky" />
-          </div>
-
-          <div className="grid grid-cols-3 gap-2.5">
             <SummaryTile value={String(s.total)} label="Total Flats" icon="🏢" tone="cyan" />
             <SummaryTile value={String(s.unsold)} label="Unsold Flats" icon="🔑" tone="orange" />
             <SummaryTile value={String(s.zeroCollection)} label="Zero Collection" icon="🚫" tone="rose" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5">
+            <SummaryTile value={String(s.pendingFlats)} label="Pending Flats" icon="📌" tone="amber" />
             <SummaryTile value={String(s.fourWheelers)} label="4-Wheelers" icon="🚙" tone="pink" />
             <SummaryTile value={String(s.twoWheelers)} label="2-Wheelers" icon="🏍️" tone="teal" />
           </div>
         </div>
 
-        <div className="mt-3.5 rounded-xl bg-slate-50 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500">
+        <div className="mt-4 rounded-xl bg-slate-50 px-3.5 py-3 text-[11px] leading-relaxed text-slate-500">
           <p>રોકડ હાથમાં = રોકડ જમા − રોકડ ખર્ચ − ફંડ ટ્રાન્સફર.</p>
-          <p className="mt-0.5">બેંક બેલેન્સ = બેંક જમા − બેંક ખર્ચ + ફંડ ટ્રાન્સફર.</p>
+          <p className="mt-1">બેંક બેલેન્સ = બેંક જમા − બેંક ખર્ચ + ફંડ ટ્રાન્સફર.</p>
         </div>
       </section>
+
+      <CommonExpenseSplit />
 
       <section>
         <div className="mb-2.5 flex items-center justify-between px-0.5">

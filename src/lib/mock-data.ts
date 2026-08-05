@@ -1,11 +1,31 @@
 import type { Flat, ChargeRound, Collection, Expense, FundTransfer, FlatDue, Vehicle, Notice } from "./types";
 
 const OWNERS = [
-  "Rajesh Patel", "Nilesh Shah", "Amit Desai", "Kiran Mehta", "Bhavin Joshi",
-  "Sanjay Trivedi", "Hardik Panchal", "Mitesh Vora", "Paresh Gandhi", "Dhaval Modi",
-  "Jayesh Solanki", "Ronak Shah", "Vishal Chauhan", "Ketan Bhatt", "Alpesh Rana",
-  "Manish Parmar", "Tejas Shah", "Rakesh Amin", "Chirag Dave", "Nikunj Pandya",
-  "Hitesh Patel", "Darshan Shah", "Ashish Raval", "Jignesh Sheladiya", "Pratik Shah",
+  { en: "Rajesh Patel", gu: "રાજેશ પટેલ" },
+  { en: "Nilesh Shah", gu: "નિલેશ શાહ" },
+  { en: "Amit Desai", gu: "અમિત દેસાઈ" },
+  { en: "Kiran Mehta", gu: "કિરણ મહેતા" },
+  { en: "Bhavin Joshi", gu: "ભાવિન જોશી" },
+  { en: "Sanjay Trivedi", gu: "સંજય ત્રિવેદી" },
+  { en: "Hardik Panchal", gu: "હાર્દિક પંચાલ" },
+  { en: "Mitesh Vora", gu: "મિતેશ વોરા" },
+  { en: "Paresh Gandhi", gu: "પરેશ ગાંધી" },
+  { en: "Dhaval Modi", gu: "ધવલ મોદી" },
+  { en: "Jayesh Solanki", gu: "જયેશ સોલંકી" },
+  { en: "Ronak Shah", gu: "રોનક શાહ" },
+  { en: "Vishal Chauhan", gu: "વિશાલ ચૌહાણ" },
+  { en: "Ketan Bhatt", gu: "કેતન ભટ્ટ" },
+  { en: "Alpesh Rana", gu: "અલ્પેશ રાણા" },
+  { en: "Manish Parmar", gu: "મનીષ પરમાર" },
+  { en: "Tejas Shah", gu: "તેજસ શાહ" },
+  { en: "Rakesh Amin", gu: "રાકેશ અમીન" },
+  { en: "Chirag Dave", gu: "ચિરાગ દવે" },
+  { en: "Nikunj Pandya", gu: "નિકુંજ પંડ્યા" },
+  { en: "Hitesh Patel", gu: "હિતેશ પટેલ" },
+  { en: "Darshan Shah", gu: "દર્શન શાહ" },
+  { en: "Ashish Raval", gu: "આશિષ રાવલ" },
+  { en: "Jignesh Sheladiya", gu: "જિગ્નેશ શેલડિયા" },
+  { en: "Pratik Shah", gu: "પ્રતિક શાહ" },
 ];
 
 // 6 unsold (builder) flats
@@ -19,13 +39,15 @@ export const flats: Flat[] = (() => {
       const num = floor * 100 + unit;
       const flatNo = "B-" + num;
       const unsold = UNSOLD.has(flatNo);
+      const owner = OWNERS[i % OWNERS.length];
       list.push({
         id: flatNo,
         wing: "B",
         flatNo,
         floor,
         unit,
-        ownerName: unsold ? "Builder (Unsold)" : OWNERS[i % OWNERS.length],
+        ownerName: unsold ? "Builder (Unsold)" : owner.en,
+        ownerNameGu: unsold ? "કોઈ માલિક નથી" : owner.gu,
         ownerPhone: unsold ? "" : "98" + String(250000000 + i * 13337).slice(0, 8),
         status: unsold ? "unsold" : "sold",
       });

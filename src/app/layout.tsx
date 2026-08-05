@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body>
+      <body className="font-sans">
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>

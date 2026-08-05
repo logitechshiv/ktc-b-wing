@@ -17,23 +17,42 @@ export default function SummaryTile({
   label,
   icon,
   tone,
+  wide = false,
 }: {
   value: string;
   label: string;
   icon: string;
   tone: SummaryTone;
+  /** Full-width hero tile */
+  wide?: boolean;
 }) {
   const t = TONES[tone];
   return (
-    <div className="rounded-2xl px-3 py-3" style={{ backgroundColor: t.bg }}>
-      <div className="text-[1.35rem] font-extrabold tabular-nums leading-none tracking-tight sm:text-[1.5rem]" style={{ color: t.value }}>
-        {value}
-      </div>
-      <div className="mt-2 flex items-center gap-1.5">
-        <span className="text-sm leading-none" aria-hidden>
-          {icon}
-        </span>
-        <span className="text-[11px] font-medium leading-none text-slate-500">{label}</span>
+    <div
+      className={
+        "rounded-2xl " +
+        (wide ? "flex items-center justify-between gap-3 px-4 py-4" : "px-3.5 py-3.5")
+      }
+      style={{ backgroundColor: t.bg }}
+    >
+      <div className={wide ? "min-w-0" : undefined}>
+        <div
+          className={
+            "font-extrabold tabular-nums tracking-tight " +
+            (wide
+              ? "text-[1.75rem] leading-none sm:text-[2rem]"
+              : "text-[1.15rem] leading-tight sm:text-[1.35rem]")
+          }
+          style={{ color: t.value }}
+        >
+          {value}
+        </div>
+        <div className={"flex items-start gap-1.5 " + (wide ? "mt-2" : "mt-2.5")}>
+          <span className="mt-0.5 shrink-0 text-sm leading-none" aria-hidden>
+            {icon}
+          </span>
+          <span className="text-[12px] font-medium leading-snug text-slate-500">{label}</span>
+        </div>
       </div>
     </div>
   );
