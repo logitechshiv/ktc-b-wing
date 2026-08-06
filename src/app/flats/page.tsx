@@ -258,39 +258,52 @@ export default function FlatsPage() {
 
                 return (
                   <li key={f.id} className="px-3 py-3 sm:px-4">
-                    <div className="min-w-0">
-                      {!hasOwner && available ? (
-                        <div className="font-medium text-slate-400">કોઈ માલિક નથી</div>
-                      ) : (
-                        <>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Owner</span>
-                            {onRent && (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:border-violet-500/50 dark:bg-violet-900/60 dark:text-violet-200">
-                                <span aria-hidden>🔑</span> On Rent
+                    <div className="flex items-start gap-2.5">
+                      <span
+                        className={
+                          "mt-0.5 flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-bold text-white " +
+                          badgeColor(f.flatNumber, f.floorNumber)
+                        }
+                      >
+                        {f.flatNumber}
+                      </span>
+
+                      <div className="min-w-0 flex-1">
+                        {!hasOwner && available ? (
+                          <div className="font-medium text-slate-400">કોઈ માલિક નથી</div>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                                Owner
                               </span>
-                            )}
-                          </div>
-                          <div className="mt-0.5 text-[15px] font-bold leading-snug text-navy break-words">
-                            {f.ownerName || "—"}
-                          </div>
-                          {f.ownerMobile ? (
-                            <button
-                              type="button"
-                              onClick={() => copyPhone(f.id + "-owner-top", f.ownerMobile)}
-                              title="Copy owner number"
-                              className="mt-1 group inline-flex items-center gap-1.5 rounded-lg px-1 py-0.5 text-left hover:bg-brand/5"
-                            >
-                              <span className="text-sm font-medium tabular-nums text-brand">
-                                {formatPhone(f.ownerMobile)}
-                              </span>
-                              <span className="text-slate-400" aria-hidden>
-                                {copiedKey === f.id + "-owner-top" ? "✓" : "⧉"}
-                              </span>
-                            </button>
-                          ) : null}
-                        </>
-                      )}
+                              {onRent && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:border-violet-500/50 dark:bg-violet-900/60 dark:text-violet-200">
+                                  <span aria-hidden>🔑</span> On Rent
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-0.5 text-[15px] font-bold leading-snug text-navy break-words">
+                              {f.ownerName || "—"}
+                            </div>
+                            {f.ownerMobile ? (
+                              <button
+                                type="button"
+                                onClick={() => copyPhone(f.id + "-owner-top", f.ownerMobile)}
+                                title="Copy owner number"
+                                className="mt-1 group inline-flex items-center gap-1.5 rounded-lg px-1 py-0.5 text-left hover:bg-brand/5"
+                              >
+                                <span className="text-sm font-medium tabular-nums text-brand">
+                                  {formatPhone(f.ownerMobile)}
+                                </span>
+                                <span className="text-slate-400" aria-hidden>
+                                  {copiedKey === f.id + "-owner-top" ? "✓" : "⧉"}
+                                </span>
+                              </button>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     {showRenter && (
@@ -331,52 +344,41 @@ export default function FlatsPage() {
                       </div>
                     )}
 
-                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    <div className="mt-2.5 flex flex-wrap items-center justify-end gap-1.5">
+                      {onRent && (
+                        <span className="rounded-full border border-violet-300 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 dark:border-violet-500/50 dark:bg-violet-900/60 dark:text-violet-200">
+                          Rent
+                        </span>
+                      )}
                       <span
                         className={
-                          "flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[11px] font-bold text-white " +
-                          badgeColor(f.flatNumber, f.floorNumber)
+                          "rounded-full border px-3 py-1 text-xs font-medium " +
+                          (available
+                            ? "border-slate-300 text-slate-500 dark:border-slate-600 dark:text-slate-400"
+                            : "border-emerald-400 text-emerald-600 dark:border-emerald-500/60 dark:text-emerald-400")
                         }
                       >
-                        {f.flatNumber}
+                        {available ? "Unsold" : "Sold"}
                       </span>
 
-                      <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-                        {onRent && (
-                          <span className="rounded-full border border-violet-300 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 dark:border-violet-500/50 dark:bg-violet-900/60 dark:text-violet-200">
-                            Rent
-                          </span>
-                        )}
-                        <span
-                          className={
-                            "rounded-full border px-3 py-1 text-xs font-medium " +
-                            (available
-                              ? "border-slate-300 text-slate-500 dark:border-slate-600 dark:text-slate-400"
-                              : "border-emerald-400 text-emerald-600 dark:border-emerald-500/60 dark:text-emerald-400")
-                          }
-                        >
-                          {available ? "Unsold" : "Sold"}
-                        </span>
-
-                        {isSuperAdmin && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => openEdit(f)}
-                              className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteTarget(f)}
-                              className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </div>
+                      {isSuperAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEdit(f)}
+                            className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(f)}
+                            className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </div>
 
                     {(copiedKey === f.id + "-owner-top" || copiedKey === f.id + "-renter") && (

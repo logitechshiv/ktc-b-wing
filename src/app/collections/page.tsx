@@ -47,12 +47,24 @@ function flatHasOwner(ownerName?: string | null) {
   return !!ownerName?.trim();
 }
 
+/** Oldest first (createdAt ascending); prefer active purposes. */
+function pickFirstPurpose(list: PurposeRecord[]): PurposeRecord | null {
+  if (list.length === 0) return null;
+  const sorted = [...list].sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return ta - tb;
+  });
+  return sorted.find((p) => p.isActive) || sorted[0] || null;
+}
+
 export default function CollectionsPage() {
   const [user, setUser] = useState<SafeUser | null>(null);
   const isSuperAdmin = user?.role === "super_admin";
 
   const [flatQ, setFlatQ] = useState("");
   const [purposeId, setPurposeId] = useState<"all" | string>("all");
+  const [purposeReady, setPurposeReady] = useState(false);
   const [modeFilter, setModeFilter] = useState<"all" | PaymentMode>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "pending">("all");
 
@@ -90,10 +102,11 @@ export default function CollectionsPage() {
   const [purposeDetails, setPurposeDetails] = useState<PurposeDetails | null>(null);
   const [purposeDetailsLoading, setPurposeDetailsLoading] = useState(false);
   const [purposeDetailsError, setPurposeDetailsError] = useState<string | null>(null);
-  /** Explicit Manage Purpose open state — details stay hidden until a card is clicked */
+  /** Explicit Manage Purpose open state — synced with Purpose dropdown */
   const [managingPurposeId, setManagingPurposeId] = useState<string | null>(null);
 
   const isManagingPurpose = managingPurposeId !== null;
+  const firstPurpose = pickFirstPurpose(purposes);
 
   useEffect(() => {
     fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
@@ -132,17 +145,25 @@ export default function CollectionsPage() {
       const flatList = floors.flatMap((f) => f.flats);
       setFlats(flatList);
 
+      const first = pickFirstPurpose(purposeList);
+      setPurposeId((current) => {
+        const stillValid = current !== "all" && purposeList.some((p) => p.id === current);
+        if (stillValid) return current;
+        return first?.id ?? "all";
+      });
+      setPurposeReady(true);
+
       setFormPurposeId((current) => {
-        if (current) return current;
-        const first = purposeList.find((p) => p.isActive) || purposeList[0];
+        if (current && purposeList.some((p) => p.id === current)) return current;
         if (first) {
-          setFormAmount(first.amount);
+          setFormAmount(first.amountPerFlat ?? first.amount);
           return first.id;
         }
-        return current;
+        return "";
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load payments");
+      setPurposeReady(true);
     }
   }, [loadPurposes, loadPayments]);
 
@@ -192,7 +213,10 @@ export default function CollectionsPage() {
   });
 
   const hasFilters =
-    flatQ.trim() !== "" || modeFilter !== "all" || purposeId !== "all" || statusFilter !== "all";
+    flatQ.trim() !== "" ||
+    modeFilter !== "all" ||
+    statusFilter !== "all" ||
+    (purposeReady && firstPurpose != null && purposeId !== firstPurpose.id);
 
   function flashSuccess(msg: string) {
     setSuccess(msg);
@@ -202,14 +226,8 @@ export default function CollectionsPage() {
   function clearFilters() {
     setFlatQ("");
     setModeFilter("all");
-    setPurposeId("all");
     setStatusFilter("all");
-    if (managingPurposeId) {
-      setManagingPurposeId(null);
-      setPurposeDetails(null);
-      setPurposeDetailsError(null);
-      setPurposeDetailsLoading(false);
-    }
+    setPurposeId(firstPurpose?.id ?? "all");
   }
 
   function openAddPurpose() {
@@ -227,32 +245,53 @@ export default function CollectionsPage() {
   }
 
   const loadPurposeDetails = useCallback(async (id: string) => {
-    setPurposeDetails(null);
     setPurposeDetailsError(null);
     setPurposeDetailsLoading(true);
     try {
       const details = await readPurposeDetails(id);
       setPurposeDetails(details);
     } catch (err) {
+      setPurposeDetails(null);
       setPurposeDetailsError(err instanceof Error ? err.message : "Unable to load purpose details");
     } finally {
       setPurposeDetailsLoading(false);
     }
   }, []);
 
-  function openManagePurpose(id: string) {
-    setManagingPurposeId(id);
+  function selectPurpose(id: string) {
     setPurposeId(id);
-    void loadPurposeDetails(id);
+  }
+
+  function openManagePurpose(id: string) {
+    selectPurpose(id);
   }
 
   function closeManagePurpose() {
-    setManagingPurposeId(null);
-    setPurposeDetails(null);
-    setPurposeDetailsError(null);
-    setPurposeDetailsLoading(false);
-    setPurposeId("all");
+    // Keep a purpose selected — return to the first purpose details
+    setPurposeId(firstPurpose?.id ?? "all");
   }
+
+  /** Dropdown / auto-select drives Manage Purpose Details (no page refresh). */
+  useEffect(() => {
+    if (!purposeReady) return;
+    if (purposeId === "all" || !purposeId) {
+      setManagingPurposeId(null);
+      setPurposeDetails(null);
+      setPurposeDetailsError(null);
+      setPurposeDetailsLoading(false);
+      return;
+    }
+    setManagingPurposeId(purposeId);
+    void loadPurposeDetails(purposeId);
+  }, [purposeId, purposeReady, loadPurposeDetails]);
+
+  // Keep dropdown on a real purpose once list is ready (never stay on "All" when purposes exist)
+  useEffect(() => {
+    if (!purposeReady || purposes.length === 0) return;
+    if (purposeId !== "all" && purposes.some((p) => p.id === purposeId)) return;
+    const first = pickFirstPurpose(purposes);
+    if (first) setPurposeId(first.id);
+  }, [purposeReady, purposes, purposeId]);
 
   /** Live refresh when purpose/payment/flat mutations happen (no full page reload). */
   useEffect(() => {
@@ -275,13 +314,14 @@ export default function CollectionsPage() {
         await updatePurpose(editingPurpose.id, data);
         flashSuccess("Purpose updated");
       } else {
-        await createPurpose(data);
+        const created = await createPurpose(data);
         flashSuccess("Purpose created");
+        setPurposeId(created.id);
       }
       setPurposeModalOpen(false);
       setEditingPurpose(null);
       await loadPurposes();
-      if (managingPurposeId) {
+      if (purposeModalMode === "edit" && managingPurposeId) {
         void loadPurposeDetails(managingPurposeId);
       }
       notifyDataChanged("purpose");
@@ -301,12 +341,10 @@ export default function CollectionsPage() {
       const removedId = deletePurposeTarget.id;
       setDeletePurposeTarget(null);
       flashSuccess("Purpose deleted");
-      if (managingPurposeId === removedId) {
-        closeManagePurpose();
-      } else if (purposeId === removedId) {
-        setPurposeId("all");
+      const remaining = await loadPurposes();
+      if (purposeId === removedId || managingPurposeId === removedId) {
+        setPurposeId(pickFirstPurpose(remaining)?.id ?? "all");
       }
-      await loadPurposes();
       notifyDataChanged("purpose");
     } catch (err) {
       setDeletePurposeError(
@@ -432,26 +470,26 @@ export default function CollectionsPage() {
           <label className="block">
             <span className="mb-1 block text-[11px] font-medium text-slate-500">Purpose (Round)</span>
             <select
-              value={purposeId}
-              onChange={(e) => {
-                const next = e.target.value;
-                setPurposeId(next);
-                // Dropdown is filter-only — never auto-open details
-                if (managingPurposeId) {
-                  setManagingPurposeId(null);
-                  setPurposeDetails(null);
-                  setPurposeDetailsError(null);
-                  setPurposeDetailsLoading(false);
-                }
-              }}
+              value={purposeId === "all" && firstPurpose ? firstPurpose.id : purposeId}
+              onChange={(e) => selectPurpose(e.target.value)}
+              disabled={purposeReady && purposes.length === 0}
               className={formSelectFilter}
             >
-              <option value="all">All</option>
-              {purposes.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
+              {purposes.length === 0 ? (
+                <option value="all">No Purpose available</option>
+              ) : (
+                [...purposes]
+                  .sort((a, b) => {
+                    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                    return ta - tb;
+                  })
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))
+              )}
             </select>
           </label>
 
@@ -516,7 +554,7 @@ export default function CollectionsPage() {
                 <button
                   type="button"
                   className="text-left"
-                  onClick={() => setPurposeId(s.purposeId)}
+                  onClick={() => selectPurpose(s.purposeId)}
                 >
                   <span className="font-semibold text-navy">{shortPurposeTitle(purpose.title)}:</span>{" "}
                   {s.total} ફ્લેટ માંથી{" "}
@@ -561,7 +599,24 @@ export default function CollectionsPage() {
         </div>
       )}
 
-      {purposes.length > 0 && (
+      {purposeReady && purposes.length === 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-800">
+          No Purpose available. Please create a Purpose first.
+          {isSuperAdmin && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={openAddPurpose}
+                className="text-xs font-semibold text-brand hover:underline"
+              >
+                + Add Purpose
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isSuperAdmin && purposes.length > 0 && (
         <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
             Manage Purposes
@@ -590,27 +645,23 @@ export default function CollectionsPage() {
                         )}
                       </div>
                     </button>
-                    {isSuperAdmin && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => openEditPurpose(purpose)}
-                          className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDeletePurposeError(null);
-                            setDeletePurposeTarget(purpose);
-                          }}
-                          className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => openEditPurpose(purpose)}
+                      className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeletePurposeError(null);
+                        setDeletePurposeTarget(purpose);
+                      }}
+                      className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </li>
               )

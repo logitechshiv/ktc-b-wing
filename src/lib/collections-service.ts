@@ -128,6 +128,7 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
     Payment.find({ paymentPurposeId: oid }).sort({ paymentDate: -1, createdAt: -1 }).lean(),
   ]);
 
+  // One payment per flat (ignore duplicates)
   const paidByFlat = new Map<string, (typeof paymentDocs)[number]>();
   for (const pay of paymentDocs) {
     const key = String(pay.flatNumber);
@@ -137,9 +138,14 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
   const paid: PurposeDetailsResult["paid"] = [];
   const pending: PurposeDetailsResult["pending"] = [];
   let totalCollected = 0;
-  let pendingWithOwner = 0;
-  let payableFlats = 0;
+  let soldFlats = 0;
+  let paidSoldFlats = 0;
+  let unpaidSoldWithOwner = 0;
   const amountPerFlat = purposeAmountPerFlat(purpose as { amountPerFlat?: number; amount?: number });
+
+  for (const amount of paidByFlat.values()) {
+    totalCollected += Number(amount.amount) || 0;
+  }
 
   for (const flat of allFlats) {
     const flatNumber = String(flat.flatNumber);
@@ -147,16 +153,13 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
     const ownerName = (flat.ownerName || "").trim();
     const ownerMobile = flat.ownerMobile || "";
     const hasOwner = !!ownerName;
-    const isSoldWithOwner = flat.status === "sold" && hasOwner;
+    // Sold + On Rent count as sold for society dues
+    const isSold = flat.status === "sold" || flat.status === "rent";
 
-    // Pending / payable counts only include Sold flats with a real owner
-    if (isSoldWithOwner) {
-      payableFlats += 1;
-    }
+    if (isSold) soldFlats += 1;
 
     if (payment) {
       const serialized = serializePayment(payment as never);
-      totalCollected += serialized.amount;
       paid.push({
         flatId: flat._id.toString(),
         flatNumber,
@@ -170,13 +173,14 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
         paymentId: serialized.id,
         whatsappSent: serialized.whatsappSent,
       });
+      if (isSold) paidSoldFlats += 1;
       continue;
     }
 
-    // બાકી રકમ: Sold + owner + unpaid only — never Available / Unsold / No Owner
-    if (!isSoldWithOwner) continue;
+    // Pending list + pending amount: Sold (with owner) and unpaid only
+    if (!isSold || !hasOwner) continue;
 
-    pendingWithOwner += 1;
+    unpaidSoldWithOwner += 1;
     pending.push({
       flatId: flat._id.toString(),
       flatNumber,
@@ -188,22 +192,21 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
     });
   }
 
-  const paidAmongPayable = paid.filter((row) => {
-    const flat = allFlats.find((f) => String(f.flatNumber) === row.flatNumber);
-    return flat?.status === "sold" && !!(flat.ownerName || "").trim();
-  }).length;
+  const totalFlats = allFlats.length;
+  // Pending count = Total flats − Paid sold flats (includes available / unpaid)
+  const pendingFlats = Math.max(0, totalFlats - paidSoldFlats);
   const collectionPercent =
-    payableFlats > 0 ? Math.round((paidAmongPayable / payableFlats) * 100) : 0;
+    soldFlats > 0 ? Math.round((paidSoldFlats / soldFlats) * 100) : 0;
 
   return {
     purpose: serializePurpose(purpose as never),
     summary: {
-      totalFlats: payableFlats,
-      paidFlats: paidAmongPayable,
-      pendingFlats: pendingWithOwner,
+      totalFlats,
+      paidFlats: paidSoldFlats,
+      pendingFlats,
       noOwnerFlats: 0,
       totalCollected,
-      totalPending: pendingWithOwner * amountPerFlat,
+      totalPending: unpaidSoldWithOwner * amountPerFlat,
       collectionPercent,
     },
     paid,

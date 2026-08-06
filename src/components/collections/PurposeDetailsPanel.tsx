@@ -268,7 +268,7 @@ export default function PurposeDetailsPanel({
             <div className="mb-2 flex items-end justify-between gap-2">
               <h3 className="text-xs font-bold uppercase tracking-wide text-rose-700 dark:text-rose-300">બાકી રકમ</h3>
               <div className="text-right text-[11px] text-slate-400">
-                {details.summary.pendingFlats} pending · {inr(details.summary.totalPending)}
+                {pending.length} pending · {inr(details.summary.totalPending)}
               </div>
             </div>
             <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-100">
