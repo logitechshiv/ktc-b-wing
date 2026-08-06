@@ -2,14 +2,6 @@ import mongoose from "mongoose";
 import { ensureSuperAdmin } from "@/lib/ensure-super-admin";
 import { ensureFlatsSeed, migrateNamesToGujaratiOnly } from "@/lib/ensure-flats";
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error("Missing MONGODB_URI in environment variables");
-}
-
-const uri: string = MONGODB_URI;
-
 interface MongooseCache {
   conn: typeof mongoose | null;
   promise: Promise<typeof mongoose> | null;
@@ -23,6 +15,14 @@ declare global {
 const cached: MongooseCache = global.mongooseCache ?? { conn: null, promise: null };
 global.mongooseCache = cached;
 
+function getMongoUri() {
+  const uri = process.env.MONGODB_URI?.trim();
+  if (!uri) {
+    throw new Error("Missing MONGODB_URI in environment variables");
+  }
+  return uri;
+}
+
 async function runSeeds() {
   await ensureSuperAdmin();
   await ensureFlatsSeed();
@@ -35,6 +35,8 @@ export async function connectDB() {
     await runSeeds();
     return cached.conn;
   }
+
+  const uri = getMongoUri();
 
   if (!cached.promise) {
     cached.promise = mongoose.connect(uri, {
