@@ -8,15 +8,14 @@ export interface Flat {
   flatNo: string;
   floor: number;
   unit: number;
+  /** Owner name (Gujarati) */
   ownerName: string;
-  /** Gujarati display name */
-  ownerNameGu: string;
   ownerPhone: string;
   status: FlatStatus;
   /** Sold flat currently given on rent */
   onRent?: boolean;
+  /** Renter name (Gujarati) */
   renterName?: string;
-  renterNameGu?: string;
   renterPhone?: string;
 }
 

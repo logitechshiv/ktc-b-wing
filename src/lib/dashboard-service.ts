@@ -1,0 +1,179 @@
+import { connectDB } from "@/lib/mongodb";
+import Payment from "@/models/Payment";
+import Expense from "@/models/Expense";
+import Flat from "@/models/Flat";
+import Vehicle from "@/models/Vehicle";
+import { serializeExpense } from "@/lib/expense-utils";
+
+export interface ExpenseByCategory {
+  category: string;
+  amount: number;
+}
+
+export interface DashboardStats {
+  totalBalance: number;
+  totalCollection: number;
+  totalExpense: number;
+  cashInHand: number;
+  bankBalance: number;
+  flats: {
+    total: number;
+    sold: number;
+    available: number;
+  };
+  vehicles: {
+    fourWheelers: number;
+    twoWheelers: number;
+    threeWheelers: number;
+  };
+  expensesByCategory: ExpenseByCategory[];
+  recentExpenses: Array<{
+    id: string;
+    category: string;
+    expenseTitle: string;
+    expenseTitleGujarati: string;
+    amount: number;
+    displayOrder: number;
+    expenseMethod: string;
+    collectionPurposeName: string;
+    paymentMethod: string;
+    expenseDate: string;
+    billImage: string;
+    notes: string;
+    whatsappShared: boolean;
+  }>;
+}
+
+const BANK_MODES = ["bank", "upi", "cheque"] as const;
+
+function sumByMode(
+  rows: { _id: string | null; total: number }[],
+  modes: readonly string[]
+) {
+  const set = new Set(modes);
+  return rows.reduce((s, r) => (set.has(String(r._id || "").toLowerCase()) ? s + (r.total || 0) : s), 0);
+}
+
+function sumCash(rows: { _id: string | null; total: number }[]) {
+  return sumByMode(rows, ["cash"]);
+}
+
+/**
+ * Aggregated dashboard stats from payments, expenses, flats, vehicles.
+ */
+export async function getDashboardStats(): Promise<DashboardStats> {
+  await connectDB();
+
+  const [paymentAgg, expenseAgg, expenseByCategoryAgg, recentExpenseDocs, flatAgg, vehicleAgg] =
+    await Promise.all([
+      Payment.aggregate<{ _id: string | null; total: number }>([
+        {
+          $group: {
+            _id: "$paymentMode",
+            total: { $sum: "$amount" },
+          },
+        },
+      ]).exec(),
+      Expense.aggregate<{ _id: string | null; total: number }>([
+        {
+          $group: {
+            _id: "$paymentMethod",
+            total: { $sum: "$amount" },
+          },
+        },
+      ]).exec(),
+      Expense.aggregate<{ _id: string | null; total: number }>([
+        {
+          $group: {
+            _id: "$category",
+            total: { $sum: "$amount" },
+          },
+        },
+        { $sort: { total: -1 } },
+      ]).exec(),
+      Expense.find({})
+        .sort({ displayOrder: 1, expenseDate: -1 })
+        .limit(3)
+        .lean()
+        .exec(),
+      Flat.aggregate<{ _id: string | null; count: number }>([
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+          },
+        },
+      ]).exec(),
+      Vehicle.aggregate<{ _id: string | null; count: number }>([
+        {
+          $group: {
+            _id: "$vehicleType",
+            count: { $sum: 1 },
+          },
+        },
+      ]).exec(),
+    ]);
+
+  const totalCollection = paymentAgg.reduce((s, r) => s + (r.total || 0), 0);
+  const totalExpense = expenseAgg.reduce((s, r) => s + (r.total || 0), 0);
+
+  const cashCollection = sumCash(paymentAgg);
+  const cashExpense = sumCash(expenseAgg);
+  const bankCollection = sumByMode(paymentAgg, BANK_MODES);
+  const bankExpense = sumByMode(expenseAgg, BANK_MODES);
+
+  const cashInHand = Math.max(0, cashCollection - cashExpense);
+  const bankBalance = bankCollection - bankExpense;
+  const totalBalance = totalCollection - totalExpense;
+
+  const sold = flatAgg.find((r) => r._id === "sold")?.count ?? 0;
+  const available = flatAgg.find((r) => r._id === "available")?.count ?? 0;
+  const flatsTotal = flatAgg.reduce((s, r) => s + (r.count || 0), 0);
+
+  const typeCount = (types: string[]) =>
+    types.reduce((s, t) => s + (vehicleAgg.find((r) => r._id === t)?.count ?? 0), 0);
+
+  return {
+    totalBalance,
+    totalCollection,
+    totalExpense,
+    cashInHand,
+    bankBalance,
+    flats: {
+      total: flatsTotal,
+      sold,
+      available,
+    },
+    vehicles: {
+      fourWheelers: typeCount(["car"]),
+      twoWheelers: typeCount(["bike", "scooter"]),
+      threeWheelers: typeCount(["auto"]),
+    },
+    expensesByCategory: expenseByCategoryAgg
+      .filter((r) => r._id)
+      .map((r) => ({
+        category: String(r._id),
+        amount: Number(r.total) || 0,
+      })),
+    recentExpenses: recentExpenseDocs.map((d) => {
+      const s = serializeExpense(d as never);
+      return {
+        id: s.id,
+        category: s.category,
+        expenseTitle: s.expenseTitle,
+        expenseTitleGujarati: s.expenseTitleGujarati,
+        amount: s.amount,
+        displayOrder: s.displayOrder,
+        expenseMethod: s.expenseMethod,
+        collectionPurposeName: s.collectionPurposeName,
+        paymentMethod: s.paymentMethod,
+        expenseDate: s.expenseDate
+          ? new Date(s.expenseDate).toISOString().slice(0, 10)
+          : "",
+        billImage: s.billImage,
+        notes: s.notes,
+        whatsappShared: s.whatsappShared,
+      };
+    }),
+  };
+}

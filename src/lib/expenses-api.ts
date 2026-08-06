@@ -1,0 +1,175 @@
+import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/expense-constants";
+
+export type ExpenseMethod = "fund" | "collection";
+export type ExpensePaymentMethod = "cash" | "bank" | "upi" | "cheque";
+
+export interface ExpenseRecord {
+  id: string;
+  category: string;
+  expenseTitle: string;
+  expenseTitleGujarati: string;
+  amount: number;
+  displayOrder: number;
+  expenseMethod: ExpenseMethod;
+  collectionPurposeId: string | null;
+  collectionPurposeName: string;
+  paymentMethod: ExpensePaymentMethod;
+  expenseDate: string;
+  billImage: string;
+  notes: string;
+  whatsappShared: boolean;
+  createdBy?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ExpenseInput {
+  category: string;
+  expenseTitle: string;
+  expenseTitleGujarati?: string;
+  amount: number;
+  expenseMethod: ExpenseMethod;
+  collectionPurposeId?: string | null;
+  collectionPurposeName?: string;
+  paymentMethod: ExpensePaymentMethod;
+  expenseDate?: string;
+  billImage?: string;
+  notes?: string;
+  whatsappShared?: boolean;
+}
+
+export interface ExpenseListParams {
+  q?: string;
+  category?: string | "all";
+}
+
+export { DEFAULT_EXPENSE_CATEGORIES };
+
+function toExpense(raw: Record<string, unknown>): ExpenseRecord {
+  return {
+    id: String(raw.id ?? raw._id),
+    category: String(raw.category ?? ""),
+    expenseTitle: String(raw.expenseTitle ?? ""),
+    expenseTitleGujarati: String(raw.expenseTitleGujarati ?? ""),
+    amount: Number(raw.amount) || 0,
+    displayOrder: Number(raw.displayOrder) || 0,
+    expenseMethod: (raw.expenseMethod as ExpenseMethod) || "fund",
+    collectionPurposeId: raw.collectionPurposeId ? String(raw.collectionPurposeId) : null,
+    collectionPurposeName: String(raw.collectionPurposeName ?? ""),
+    paymentMethod: (raw.paymentMethod as ExpensePaymentMethod) || "cash",
+    expenseDate: raw.expenseDate ? String(raw.expenseDate).slice(0, 10) : "",
+    billImage: String(raw.billImage ?? ""),
+    notes: String(raw.notes ?? ""),
+    whatsappShared: !!raw.whatsappShared,
+    createdBy: raw.createdBy ? String(raw.createdBy) : null,
+    createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
+    updatedAt: raw.updatedAt ? String(raw.updatedAt) : undefined,
+  };
+}
+
+async function parseJson(res: Response) {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    throw new Error(data.message || `Request failed (${res.status})`);
+  }
+  return data;
+}
+
+export async function readExpenses(params: ExpenseListParams = {}): Promise<{
+  expenses: ExpenseRecord[];
+  shownTotal: number;
+  categories: string[];
+  nextDisplayOrder: number;
+  summary: { totalExpenses: number; totalAmount: number };
+}> {
+  const sp = new URLSearchParams();
+  if (params.q?.trim()) sp.set("q", params.q.trim());
+  if (params.category && params.category !== "all") sp.set("category", params.category);
+
+  const res = await fetch(`/api/expenses?${sp.toString()}`, { cache: "no-store" });
+  const data = await parseJson(res);
+  return {
+    expenses: ((data.expenses as Record<string, unknown>[]) || []).map(toExpense),
+    shownTotal: Number(data.shownTotal) || 0,
+    categories: (data.categories as string[]) || [],
+    nextDisplayOrder: Number(data.nextDisplayOrder) || 1,
+    summary: data.summary || { totalExpenses: 0, totalAmount: 0 },
+  };
+}
+
+export async function createExpense(input: ExpenseInput): Promise<ExpenseRecord> {
+  const res = await fetch("/api/expenses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    cache: "no-store",
+    body: JSON.stringify(input),
+  });
+  const data = await parseJson(res);
+  return toExpense(data.expense);
+}
+
+export async function updateExpense(id: string, input: ExpenseInput): Promise<ExpenseRecord> {
+  const res = await fetch(`/api/expenses/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    cache: "no-store",
+    body: JSON.stringify(input),
+  });
+  const data = await parseJson(res);
+  return toExpense(data.expense);
+}
+
+export async function deleteExpense(id: string): Promise<void> {
+  const res = await fetch(`/api/expenses/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  await parseJson(res);
+}
+
+export async function markExpenseWhatsappShared(id: string): Promise<ExpenseRecord> {
+  const res = await fetch(`/api/expenses/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    cache: "no-store",
+    body: JSON.stringify({ whatsappShared: true }),
+  });
+  const data = await parseJson(res);
+  return toExpense(data.expense);
+}
+
+export async function uploadExpenseBill(file: File): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/expenses/upload", {
+    method: "POST",
+    credentials: "same-origin",
+    cache: "no-store",
+    body: form,
+  });
+  const data = await parseJson(res);
+  return String(data.url || "");
+}
+
+export async function reorderExpenses(
+  items: Array<{ id: string; displayOrder: number }>
+): Promise<ExpenseRecord[]> {
+  const res = await fetch("/api/expenses/reorder", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    cache: "no-store",
+    body: JSON.stringify(
+      items.map((item) => ({
+        _id: item.id,
+        displayOrder: item.displayOrder,
+      }))
+    ),
+  });
+  const data = await parseJson(res);
+  return ((data.expenses as Record<string, unknown>[]) || []).map(toExpense);
+}

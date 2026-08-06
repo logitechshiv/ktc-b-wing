@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { expenses, flats } from "@/lib/mock-data";
 import { inr } from "@/lib/format";
+import { formSelectFilter } from "@/lib/form-styles";
 
 /** Common building costs split across all flats */
 const COMMON_CATEGORIES = new Set([
@@ -98,7 +99,7 @@ export default function CommonExpenseSplit() {
           <select
             value={month}
             onChange={(e) => setMonth(Number(e.target.value))}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-brand focus:bg-white"
+            className={formSelectFilter}
           >
             {MONTHS.map((m) => (
               <option key={m.value} value={m.value}>
@@ -112,7 +113,7 @@ export default function CommonExpenseSplit() {
           <select
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-brand focus:bg-white"
+            className={formSelectFilter}
           >
             {years.map((y) => (
               <option key={y} value={y}>

@@ -1,42 +1,42 @@
 import type { Flat, ChargeRound, Collection, Expense, FundTransfer, FlatDue, Vehicle, Notice } from "./types";
 
 const OWNERS = [
-  { en: "Rajesh Patel", gu: "રાજેશ પટેલ" },
-  { en: "Nilesh Shah", gu: "નિલેશ શાહ" },
-  { en: "Amit Desai", gu: "અમિત દેસાઈ" },
-  { en: "Kiran Mehta", gu: "કિરણ મહેતા" },
-  { en: "Bhavin Joshi", gu: "ભાવિન જોશી" },
-  { en: "Sanjay Trivedi", gu: "સંજય ત્રિવેદી" },
-  { en: "Hardik Panchal", gu: "હાર્દિક પંચાલ" },
-  { en: "Mitesh Vora", gu: "મિતેશ વોરા" },
-  { en: "Paresh Gandhi", gu: "પરેશ ગાંધી" },
-  { en: "Dhaval Modi", gu: "ધવલ મોદી" },
-  { en: "Jayesh Solanki", gu: "જયેશ સોલંકી" },
-  { en: "Ronak Shah", gu: "રોનક શાહ" },
-  { en: "Vishal Chauhan", gu: "વિશાલ ચૌહાણ" },
-  { en: "Ketan Bhatt", gu: "કેતન ભટ્ટ" },
-  { en: "Alpesh Rana", gu: "અલ્પેશ રાણા" },
-  { en: "Manish Parmar", gu: "મનીષ પરમાર" },
-  { en: "Tejas Shah", gu: "તેજસ શાહ" },
-  { en: "Rakesh Amin", gu: "રાકેશ અમીન" },
-  { en: "Chirag Dave", gu: "ચિરાગ દવે" },
-  { en: "Nikunj Pandya", gu: "નિકુંજ પંડ્યા" },
-  { en: "Hitesh Patel", gu: "હિતેશ પટેલ" },
-  { en: "Darshan Shah", gu: "દર્શન શાહ" },
-  { en: "Ashish Raval", gu: "આશિષ રાવલ" },
-  { en: "Jignesh Sheladiya", gu: "જિગ્નેશ શેલડિયા" },
-  { en: "Pratik Shah", gu: "પ્રતિક શાહ" },
+  "રાજેશ પટેલ",
+  "નિલેશ શાહ",
+  "અમિત દેસાઈ",
+  "કિરણ મહેતા",
+  "ભાવિન જોશી",
+  "સંજય ત્રિવેદી",
+  "હાર્દિક પંચાલ",
+  "મિતેશ વોરા",
+  "પરેશ ગાંધી",
+  "ધવલ મોદી",
+  "જયેશ સોલંકી",
+  "રોનક શાહ",
+  "વિશાલ ચૌહાણ",
+  "કેતન ભટ્ટ",
+  "અલ્પેશ રાણા",
+  "મનીષ પરમાર",
+  "તેજસ શાહ",
+  "રાકેશ અમીન",
+  "ચિરાગ દવે",
+  "નિકુંજ પંડ્યા",
+  "હિતેશ પટેલ",
+  "દર્શન શાહ",
+  "આશિષ રાવલ",
+  "જિગ્નેશ શેલડિયા",
+  "પ્રતિક શાહ",
 ];
 
 // 6 unsold (builder) flats
 const UNSOLD = new Set(["B-904", "B-1004", "B-1104", "B-1203", "B-1303", "B-1304"]);
 
 /** Sample flats currently on rent (owner remains for dues) */
-const ON_RENT: Record<string, { en: string; gu: string; phone: string }> = {
-  "B-102": { en: "Mehul Joshi", gu: "મેહુલ જોશી", phone: "9876512345" },
-  "B-205": { en: "Sneha Raval", gu: "સ્નેહા રાવલ", phone: "9823456789" },
-  "B-403": { en: "Kaushik Patel", gu: "કૌશિક પટેલ", phone: "9898765432" },
-  "B-701": { en: "Priya Shah", gu: "પ્રિયા શાહ", phone: "9811223344" },
+const ON_RENT: Record<string, { name: string; phone: string }> = {
+  "B-102": { name: "મેહુલ જોશી", phone: "9876512345" },
+  "B-205": { name: "સ્નેહા રાવલ", phone: "9823456789" },
+  "B-403": { name: "કૌશિક પટેલ", phone: "9898765432" },
+  "B-701": { name: "પ્રિયા શાહ", phone: "9811223344" },
 };
 
 export const flats: Flat[] = (() => {
@@ -55,13 +55,11 @@ export const flats: Flat[] = (() => {
         flatNo,
         floor,
         unit,
-        ownerName: unsold ? "Builder (Unsold)" : owner.en,
-        ownerNameGu: unsold ? "કોઈ માલિક નથી" : owner.gu,
+        ownerName: unsold ? "કોઈ માલિક નથી" : owner,
         ownerPhone: unsold ? "" : "98" + String(250000000 + i * 13337).slice(0, 8),
         status: unsold ? "unsold" : "sold",
         onRent: !!rent,
-        renterName: rent?.en,
-        renterNameGu: rent?.gu,
+        renterName: rent?.name,
         renterPhone: rent?.phone,
       });
       i++;

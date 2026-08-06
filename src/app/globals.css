@@ -6,8 +6,133 @@ html,
 body {
   height: 100%;
 }
+
 body {
   background: #f3f5f8;
   color: #1f2937;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+html.dark body {
+  background: #0b1220;
+  color: #e2e8f0;
+}
+
+@layer components {
+  /* Native select — same readable options as Vehicle Type in light & dark */
+  .form-select {
+    color-scheme: light;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+    padding-right: 2.5rem;
+  }
+
+  html.dark .form-select {
+    color-scheme: dark;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%94a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+  }
+
+  .form-select option {
+    background-color: #ffffff;
+    color: #1e293b;
+  }
+
+  html.dark .form-select option {
+    background-color: #1e293b;
+    color: #f1f5f9;
+  }
+}
+
+/* Dark surfaces scoped to app content (not the branded header) */
+html.dark main .bg-white,
+html.dark main .bg-white\/95 {
+  background-color: rgb(15 23 42) !important;
+}
+
+html.dark main .bg-slate-50,
+html.dark main .bg-slate-50\/80,
+html.dark main .bg-slate-50\/60 {
+  background-color: rgb(30 41 59) !important;
+}
+
+html.dark main .text-navy {
+  color: rgb(241 245 249) !important;
+}
+
+html.dark main .text-slate-800 {
+  color: rgb(226 232 240) !important;
+}
+
+html.dark main .text-slate-700,
+html.dark main .text-slate-600 {
+  color: rgb(203 213 225) !important;
+}
+
+html.dark main .text-slate-500,
+html.dark main .text-slate-400 {
+  color: rgb(148 163 184) !important;
+}
+
+html.dark main .border-slate-100,
+html.dark main .border-slate-100\/80,
+html.dark main .border-slate-200 {
+  border-color: rgb(51 65 85) !important;
+}
+
+html.dark main .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgb(51 65 85);
+}
+
+html.dark main .ring-slate-100\/80 {
+  --tw-ring-color: rgb(51 65 85 / 0.8);
+}
+
+html.dark main .shadow-sm,
+html.dark main .shadow-\[0_8px_24px_rgba\(15\,40\,80\,0\.06\)\] {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Fixed modals / dialogs rendered inside pages */
+html.dark .fixed.inset-0 .bg-white,
+html.dark .fixed .max-w-lg.bg-white,
+html.dark .fixed .max-w-sm.bg-white {
+  background-color: rgb(15 23 42) !important;
+  color: rgb(226 232 240);
+}
+
+html.dark .fixed .text-navy {
+  color: rgb(241 245 249) !important;
+}
+
+html.dark .fixed .border-slate-200,
+html.dark .fixed .border-slate-100 {
+  border-color: rgb(51 65 85) !important;
+}
+
+/* Inputs/textarea in modals — selects use .form-select */
+html.dark .fixed input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+html.dark .fixed textarea {
+  background-color: rgb(30 41 59) !important;
+  color: rgb(241 245 249) !important;
+  border-color: rgb(71 85 105) !important;
+}
+
+html.dark .fixed select.form-select,
+html.dark main select.form-select {
+  background-color: rgb(30 41 59) !important;
+  color: rgb(241 245 249) !important;
+  border-color: rgb(71 85 105) !important;
+}
+
+/* Keep login entrance animations visible even if motion is reduced */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-fade-in-up {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }

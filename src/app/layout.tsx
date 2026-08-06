@@ -12,15 +12,34 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0A4C86",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#0A4C86" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b1220" },
+  ],
   width: "device-width",
   initialScale: 1,
 };
 
+/** Runs before paint to avoid theme flash */
+const themeInitScript = `
+(function(){
+  try {
+    var stored = localStorage.getItem('ktc-theme');
+    var mode = (stored === 'light' || stored === 'dark' || stored === 'system') ? stored : 'system';
+    var dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    var root = document.documentElement;
+    root.classList.toggle('dark', dark);
+    root.style.colorScheme = dark ? 'dark' : 'light';
+    root.dataset.theme = mode;
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
@@ -28,7 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="font-sans">
+      <body className="font-sans antialiased">
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>

@@ -1,8 +1,24 @@
 "use client";
-import { useMemo, useState } from "react";
-import { flats, vehicles } from "@/lib/mock-data";
+
+import { useCallback, useEffect, useState } from "react";
 import { formatPhone, formatPlate } from "@/lib/format";
-import type { Flat, Vehicle, VehicleType } from "@/lib/types";
+import type { SafeUser } from "@/lib/auth-client";
+import {
+  createVehicle,
+  createVehicles,
+  deleteVehicle,
+  readVehicles,
+  updateVehicle,
+  type BulkVehicleInput,
+  type VehicleGroup,
+  type VehicleInput,
+  type VehicleRecord,
+  type VehicleSummary,
+  type VehicleType,
+} from "@/lib/vehicles-api";
+import { notifyDataChanged } from "@/lib/data-sync";
+import VehicleModal from "@/components/vehicles/VehicleModal";
+import DeleteVehicleDialog from "@/components/vehicles/DeleteVehicleDialog";
 
 const BADGE_COLORS = [
   "bg-sky-500",
@@ -15,8 +31,9 @@ const BADGE_COLORS = [
   "bg-indigo-500",
 ];
 
-function badgeColor(unit: number, floor: number) {
-  return BADGE_COLORS[(floor * 4 + unit - 1) % BADGE_COLORS.length];
+function badgeColor(flatNumber: string, floorNumber: number) {
+  const unit = Number(flatNumber) % 100 || 1;
+  return BADGE_COLORS[(floorNumber * 4 + unit - 1) % BADGE_COLORS.length];
 }
 
 function VehicleIcon({ type }: { type: VehicleType }) {
@@ -34,6 +51,20 @@ function VehicleIcon({ type }: { type: VehicleType }) {
       </span>
     );
   }
+  if (type === "auto") {
+    return (
+      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-50 text-lg" title="Auto" aria-hidden>
+        🛺
+      </span>
+    );
+  }
+  if (type === "other") {
+    return (
+      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-lg" title="Other" aria-hidden>
+        🚐
+      </span>
+    );
+  }
   return (
     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-lg" title="Scooter" aria-hidden>
       🛵
@@ -41,58 +72,82 @@ function VehicleIcon({ type }: { type: VehicleType }) {
   );
 }
 
-interface FlatVehicles {
-  flat: Flat;
-  vehicles: Vehicle[];
-}
+const TYPE_FILTERS: { value: VehicleType | "all"; label: string }[] = [
+  { value: "all", label: "All Types" },
+  { value: "car", label: "Car" },
+  { value: "bike", label: "Bike" },
+  { value: "scooter", label: "Scooter" },
+  { value: "auto", label: "Auto" },
+];
 
 export default function VehiclesPage() {
   const [q, setQ] = useState("");
-  const [copied, setCopied] = useState<string | null>(null);
   const [stickerFilter, setStickerFilter] = useState<"all" | "yes" | "no">("all");
+  const [typeFilter, setTypeFilter] = useState<VehicleType | "all">("all");
+  const [copied, setCopied] = useState<string | null>(null);
 
-  const grouped = useMemo(() => {
-    const query = q.trim().toLowerCase().replace(/\s/g, "");
-    const byFlat = new Map<string, FlatVehicles>();
+  const [groups, setGroups] = useState<VehicleGroup[]>([]);
+  const [summary, setSummary] = useState<VehicleSummary>({ total: 0, cars: 0, twoWheel: 0, noSticker: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-    for (const v of vehicles) {
-      if (stickerFilter === "yes" && !v.sticker) continue;
-      if (stickerFilter === "no" && v.sticker) continue;
+  const [user, setUser] = useState<SafeUser | null>(null);
+  const isSuperAdmin = user?.role === "super_admin";
 
-      const flat = flats.find((f) => f.id === v.flatId);
-      if (!flat || flat.status !== "sold") continue;
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"add" | "edit">("add");
+  const [editing, setEditing] = useState<VehicleRecord | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
-      const plate = v.number.toLowerCase().replace(/\s/g, "");
-      const flatNo = flat.flatNo.toLowerCase().replace(/\s/g, "");
-      const unit = String(flat.floor * 100 + flat.unit);
-      const owner = flat.ownerName.toLowerCase().replace(/\s/g, "");
-      if (
-        query &&
-        !plate.includes(query) &&
-        !flatNo.includes(query) &&
-        !unit.includes(query) &&
-        !owner.includes(query) &&
-        !flat.ownerPhone.includes(query)
-      ) {
-        continue;
-      }
+  const [deleteTarget, setDeleteTarget] = useState<VehicleRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-      const entry = byFlat.get(flat.id) ?? { flat, vehicles: [] };
-      entry.vehicles.push(v);
-      byFlat.set(flat.id, entry);
-    }
-
-    return Array.from(byFlat.values()).sort(
-      (a, b) => a.flat.floor - b.flat.floor || a.flat.unit - b.flat.unit
-    );
-  }, [q, stickerFilter]);
-
-  const totals = useMemo(() => {
-    const cars = vehicles.filter((v) => v.type === "car").length;
-    const twoWheel = vehicles.filter((v) => v.type !== "car").length;
-    const noSticker = vehicles.filter((v) => !v.sticker).length;
-    return { total: vehicles.length, cars, twoWheel, noSticker };
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) {
+          setUser(null);
+          return;
+        }
+        const data = await res.json();
+        setUser(data.user ?? null);
+      })
+      .catch(() => setUser(null));
   }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await readVehicles({
+        q,
+        sticker: stickerFilter,
+        type: typeFilter,
+      });
+      setGroups(data.groups);
+      setSummary(data.summary);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load vehicles");
+      setGroups([]);
+      setSummary({ total: 0, cars: 0, twoWheel: 0, noSticker: 0 });
+    } finally {
+      setLoading(false);
+    }
+  }, [q, stickerFilter, typeFilter]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void load();
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [load]);
+
+  function flashSuccess(msg: string) {
+    setSuccess(msg);
+    window.setTimeout(() => setSuccess(null), 2500);
+  }
 
   async function copyText(key: string, value: string) {
     try {
@@ -104,32 +159,104 @@ export default function VehiclesPage() {
     }
   }
 
+  function openAdd() {
+    setModalMode("add");
+    setEditing(null);
+    setModalError(null);
+    setModalOpen(true);
+  }
+
+  function openEdit(vehicle: VehicleRecord) {
+    setModalMode("edit");
+    setEditing(vehicle);
+    setModalError(null);
+    setModalOpen(true);
+  }
+
+  async function handleSave(data: VehicleInput | BulkVehicleInput) {
+    setSaving(true);
+    setModalError(null);
+    try {
+      if (modalMode === "edit") {
+        if (!editing?.id) throw new Error("Missing vehicle id — cannot update");
+        await updateVehicle(editing.id, data as VehicleInput);
+        flashSuccess("Vehicle updated");
+      } else if ("vehicles" in data) {
+        const created = await createVehicles(data);
+        flashSuccess(created.length === 1 ? "Vehicle added" : `${created.length} vehicles added`);
+      } else {
+        await createVehicle(data);
+        flashSuccess("Vehicle added");
+      }
+      setModalOpen(false);
+      setEditing(null);
+      await load();
+      notifyDataChanged("vehicle");
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : "Unable to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget?.id) return;
+    setDeleting(true);
+    try {
+      await deleteVehicle(deleteTarget.id);
+      setDeleteTarget(null);
+      flashSuccess("Vehicle deleted");
+      await load();
+      notifyDataChanged("vehicle");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete vehicle");
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-bold text-navy">Vehicles</h1>
-        <p className="mt-0.5 text-xs text-slate-500">
-          ફ્લેટ અથવા વાહન નંબરથી શોધો — માલિકની વિગતો તરત જોઈ શકાય.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-bold text-navy">Vehicles</h1>
+          <p className="mt-0.5 text-xs text-slate-500">
+            ફ્લેટ અથવા વાહન નંબરથી શોધો — માલિકની વિગતો તરત જોઈ શકાય.
+          </p>
+        </div>
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={openAdd}
+            className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-black px-3 text-[12px] font-semibold text-white shadow-sm transition hover:bg-slate-900 active:scale-[0.98] sm:px-4 sm:text-[13px]"
+          >
+            + Add Vehicle
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-xl border border-slate-100 bg-white px-3 py-2 shadow-sm">
           <div className="text-[10px] text-slate-400">Total</div>
-          <div className="text-lg font-bold tabular-nums text-navy">{totals.total}</div>
+          <div className="text-lg font-bold tabular-nums text-navy">{summary.total}</div>
         </div>
         <div className="rounded-xl border border-slate-100 bg-white px-3 py-2 shadow-sm">
           <div className="text-[10px] text-slate-400">Cars / 2W</div>
           <div className="text-lg font-bold tabular-nums text-navy">
-            {totals.cars}
+            {summary.cars}
             <span className="text-slate-300"> / </span>
-            {totals.twoWheel}
+            {summary.twoWheel}
           </div>
         </div>
         <div className="rounded-xl border border-slate-100 bg-white px-3 py-2 shadow-sm">
           <div className="text-[10px] text-slate-400">No sticker</div>
-          <div className={"text-lg font-bold tabular-nums " + (totals.noSticker ? "text-amber-600" : "text-navy")}>
-            {totals.noSticker}
+          <div
+            className={
+              "text-lg font-bold tabular-nums " + (summary.noSticker ? "text-amber-600" : "text-navy")
+            }
+          >
+            {summary.noSticker}
           </div>
         </div>
       </div>
@@ -144,7 +271,7 @@ export default function VehiclesPage() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Vehicle No / Flat No"
+          placeholder="Vehicle No / Flat No / Owner / Mobile"
           className="w-full rounded-xl border border-brand/30 bg-brand/5 py-2.5 pl-9 pr-4 text-sm outline-none placeholder:text-slate-400 focus:border-brand focus:bg-white"
         />
       </div>
@@ -173,80 +300,169 @@ export default function VehiclesPage() {
         ))}
       </div>
 
+      <div className="flex items-center gap-2 overflow-x-auto pb-0.5 text-xs">
+        {TYPE_FILTERS.map(({ value, label }) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setTypeFilter(value)}
+            className={
+              "shrink-0 rounded-full border px-3 py-1 font-medium transition " +
+              (typeFilter === value
+                ? "border-brand bg-brand text-white"
+                : "border-slate-200 bg-white text-slate-500")
+            }
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {success && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm font-medium text-emerald-700">
+          {success}
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-600">
+          {error}
+        </div>
+      )}
+
       <p className="flex items-center gap-1.5 text-[11px] text-slate-400">
         <span aria-hidden>📋</span>
         નંબર પર દબાવો તો કોપી થઈ જશે
       </p>
 
-      {grouped.map(({ flat, vehicles: flatVehicles }) => {
-        const unitLabel = String(flat.floor * 100 + flat.unit);
-        return (
-          <section key={flat.id} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-            <div className="flex flex-col items-center px-4 pb-2 pt-4">
-              <span
-                className={
-                  "flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold text-white " +
-                  badgeColor(flat.unit, flat.floor)
-                }
-              >
-                {unitLabel}
-              </span>
-              <div className="mt-2 text-center text-base font-bold text-navy">{flat.ownerName}</div>
-              {flat.ownerPhone && (
-                <button
-                  type="button"
-                  onClick={() => copyText("phone-" + flat.id, flat.ownerPhone)}
-                  className="mt-1 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold tabular-nums text-brand hover:bg-brand/5"
-                  title="Copy number"
-                >
-                  <span className="text-rose-500" aria-hidden>
-                    ☎
-                  </span>
-                  {formatPhone(flat.ownerPhone)}
-                  {copied === "phone-" + flat.id && (
-                    <span className="text-[10px] font-medium text-emerald-600">Copied</span>
-                  )}
-                </button>
-              )}
-            </div>
+      {loading && (
+        <p className="py-8 text-center text-sm text-slate-400">Loading vehicles…</p>
+      )}
 
-            <ul className="divide-y divide-slate-100 border-t border-slate-100">
-              {flatVehicles.map((v) => (
-                <li key={v.id} className="flex items-center gap-2.5 px-3 py-2.5 sm:px-4">
-                  <VehicleIcon type={v.type} />
+      {!loading &&
+        groups.map((group) => {
+          // Role tag must come from MongoDB vehicleOwnerType on the vehicle docs
+          const vehicleOwnerType =
+            String(
+              group.vehicles[0]?.vehicleOwnerType ?? group.vehicleOwnerType ?? "owner"
+            ).toLowerCase() === "renter"
+              ? "renter"
+              : "owner";
+          const roleLabel = vehicleOwnerType === "renter" ? "Renter" : "Owner";
+          const displayName = group.ownerName || `Flat ${group.flatNumber}`;
+          const displayMobile = group.ownerMobile;
+
+          return (
+            <section
+              key={group.key}
+              className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm"
+            >
+              <div className="flex flex-col items-center px-4 pb-2 pt-4">
+                <span
+                  className={
+                    "flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold text-white " +
+                    badgeColor(group.flatNumber, group.floorNumber)
+                  }
+                >
+                  {group.flatNumber}
+                </span>
+                <div className="mt-2 text-center text-base font-bold text-navy">{displayName}</div>
+                <div className="mt-0.5 text-[11px] font-medium text-slate-400">{roleLabel}</div>
+                {displayMobile && (
                   <button
                     type="button"
-                    onClick={() => copyText("plate-" + v.id, v.number)}
-                    className="min-w-0 flex-1 text-left"
-                    title="Copy vehicle number"
+                    onClick={() => copyText("phone-" + group.key, displayMobile)}
+                    className="mt-1 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold tabular-nums text-brand hover:bg-brand/5"
+                    title="Copy number"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold tabular-nums tracking-wide text-brand">
-                        {formatPlate(v.number)}
-                      </span>
-                      <span
-                        className={
-                          "shrink-0 text-[11px] font-medium " +
-                          (v.sticker ? "text-emerald-600" : "text-amber-600")
-                        }
-                      >
-                        સ્ટીકર: {v.sticker ? "Yes" : "No"}
-                      </span>
-                    </div>
-                    {copied === "plate-" + v.id && (
-                      <div className="text-[10px] font-medium text-emerald-600">Number copied</div>
+                    <span className="text-rose-500" aria-hidden>
+                      ☎
+                    </span>
+                    {formatPhone(displayMobile)}
+                    {copied === "phone-" + group.key && (
+                      <span className="text-[10px] font-medium text-emerald-600">Copied</span>
                     )}
                   </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        );
-      })}
+                )}
+              </div>
 
-      {grouped.length === 0 && (
+              <ul className="divide-y divide-slate-100 border-t border-slate-100">
+                {group.vehicles.map((v) => (
+                  <li key={v.id} className="flex items-center gap-2.5 px-3 py-2.5 sm:px-4">
+                    <VehicleIcon type={v.vehicleType} />
+                    <button
+                      type="button"
+                      onClick={() => copyText("plate-" + v.id, v.vehicleNumber)}
+                      className="min-w-0 flex-1 text-left"
+                      title="Copy vehicle number"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold tabular-nums tracking-wide text-brand">
+                          {v.vehicleNumber ? formatPlate(v.vehicleNumber) : "No number"}
+                        </span>
+                        <span
+                          className={
+                            "shrink-0 text-[11px] font-medium " +
+                            (v.stickerIssued ? "text-emerald-600" : "text-amber-600")
+                          }
+                        >
+                          સ્ટીકર: {v.stickerIssued ? "Yes" : "No"}
+                        </span>
+                      </div>
+                      {copied === "plate-" + v.id && (
+                        <div className="text-[10px] font-medium text-emerald-600">Number copied</div>
+                      )}
+                    </button>
+                    {isSuperAdmin && (
+                      <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(v)}
+                          className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(v)}
+                          className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+
+      {!loading && groups.length === 0 && (
         <p className="py-10 text-center text-sm text-slate-400">No vehicles match your search.</p>
       )}
+
+      <VehicleModal
+        open={modalOpen}
+        mode={modalMode}
+        initial={editing}
+        saving={saving}
+        error={modalError}
+        onClose={() => {
+          setModalOpen(false);
+          setEditing(null);
+          setModalError(null);
+        }}
+        onSubmit={handleSave}
+      />
+
+      <DeleteVehicleDialog
+        open={!!deleteTarget}
+        vehicleNumber={deleteTarget?.vehicleNumber}
+        loading={deleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

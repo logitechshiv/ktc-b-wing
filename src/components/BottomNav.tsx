@@ -71,20 +71,25 @@ const tabs: { href: string; label: string; icon: (active: boolean) => ReactNode 
 ];
 
 export default function BottomNav() {
-  const path = usePathname();
+  const path = usePathname() ?? "";
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 pb-[env(safe-area-inset-bottom)]">
-      <div className="border-t border-slate-200/80 bg-white/95 shadow-[0_-8px_30px_rgba(15,40,80,0.08)] backdrop-blur-md">
+      <div className="border-t border-slate-200/80 bg-white/95 shadow-[0_-8px_30px_rgba(15,40,80,0.08)] backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-[0_-8px_30px_rgba(0,0,0,0.45)]">
         <div className="mx-auto grid max-w-3xl grid-cols-6 px-1">
           {tabs.map((t) => {
-            const active = t.href === "/" ? path === "/" : path.startsWith(t.href);
+            const active =
+              t.href === "/"
+                ? path === "/" || path === "/dashboard"
+                : path === t.href || path.startsWith(t.href + "/");
             return (
               <Link
                 key={t.href}
                 href={t.href}
                 className={
                   "relative flex flex-col items-center gap-1 px-1 pb-2 pt-2.5 text-[10px] transition sm:text-[11px] " +
-                  (active ? "text-brand" : "text-slate-400 hover:text-slate-600")
+                  (active
+                    ? "text-brand"
+                    : "text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300")
                 }
               >
                 {active && (
@@ -93,7 +98,7 @@ export default function BottomNav() {
                 <span
                   className={
                     "flex h-8 w-8 items-center justify-center rounded-xl transition " +
-                    (active ? "bg-brand/10 text-brand" : "text-slate-400")
+                    (active ? "bg-brand/10 text-brand" : "text-slate-400 dark:text-slate-500")
                   }
                 >
                   {t.icon(active)}

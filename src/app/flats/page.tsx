@@ -1,8 +1,21 @@
 "use client";
-import { useMemo, useState } from "react";
-import { flats } from "@/lib/mock-data";
+
+import { useCallback, useEffect, useState } from "react";
 import { formatPhone } from "@/lib/format";
-import type { Flat } from "@/lib/types";
+import type { SafeUser } from "@/lib/auth-client";
+import {
+  createFlat,
+  deleteFlat,
+  readFlats,
+  updateFlat,
+  type FlatInput,
+  type FlatRecord,
+  type FlatStatus,
+  type FloorGroup,
+} from "@/lib/flats-api";
+import { notifyDataChanged } from "@/lib/data-sync";
+import PlotDetailsModal from "@/components/flats/PlotDetailsModal";
+import DeleteFlatDialog from "@/components/flats/DeleteFlatDialog";
 
 const BADGE_COLORS = [
   "bg-sky-500",
@@ -15,38 +28,76 @@ const BADGE_COLORS = [
   "bg-indigo-500",
 ];
 
-function badgeColor(unit: number, floor: number) {
-  return BADGE_COLORS[(floor * 4 + unit - 1) % BADGE_COLORS.length];
+function badgeColor(flatNumber: string, floorNumber: number) {
+  const unit = Number(flatNumber) % 100 || 1;
+  return BADGE_COLORS[(floorNumber * 4 + unit - 1) % BADGE_COLORS.length];
+}
+
+function statusLabel(status: FlatStatus) {
+  if (status === "sold") return "Sold";
+  if (status === "rent") return "Rent";
+  return "Unsold";
 }
 
 export default function FlatsPage() {
   const [q, setQ] = useState("");
+  const [status, setStatus] = useState<FlatStatus | "all">("all");
+  const [floors, setFloors] = useState<FloorGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    const queryRaw = q.trim();
-    const digits = query.replace(/\s/g, "");
-    if (!query) return flats;
-    return flats.filter(
-      (f) =>
-        f.flatNo.toLowerCase().includes(query) ||
-        f.ownerName.toLowerCase().includes(query) ||
-        f.ownerNameGu.includes(queryRaw) ||
-        f.ownerPhone.includes(digits) ||
-        (f.renterName || "").toLowerCase().includes(query) ||
-        (f.renterNameGu || "").includes(queryRaw) ||
-        (f.renterPhone || "").includes(digits)
-    );
-  }, [q]);
+  const [user, setUser] = useState<SafeUser | null>(null);
+  const isSuperAdmin = user?.role === "super_admin";
 
-  const byFloor: Record<number, Flat[]> = {};
-  filtered.forEach((f) => {
-    (byFloor[f.floor] = byFloor[f.floor] || []).push(f);
-  });
-  const floors = Object.keys(byFloor)
-    .map(Number)
-    .sort((a, b) => a - b);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"add" | "edit">("add");
+  const [editing, setEditing] = useState<FlatRecord | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<FlatRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) {
+          setUser(null);
+          return;
+        }
+        const data = await res.json();
+        setUser(data.user ?? null);
+      })
+      .catch(() => setUser(null));
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await readFlats({ q, status });
+      setFloors(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load flats");
+      setFloors([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [q, status]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void load();
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [load]);
+
+  function flashSuccess(msg: string) {
+    setSuccess(msg);
+    window.setTimeout(() => setSuccess(null), 2500);
+  }
 
   async function copyPhone(key: string, phone: string) {
     if (!phone) return;
@@ -55,12 +106,89 @@ export default function FlatsPage() {
       setCopiedKey(key);
       window.setTimeout(() => setCopiedKey((cur) => (cur === key ? null : cur)), 1500);
     } catch {
-      /* clipboard may be unavailable */
+      /* ignore */
+    }
+  }
+
+  function openAdd() {
+    setModalMode("add");
+    setEditing(null);
+    setModalError(null);
+    setModalOpen(true);
+  }
+
+  function openEdit(flat: FlatRecord) {
+    setModalMode("edit");
+    setEditing(flat);
+    setModalError(null);
+    setModalOpen(true);
+  }
+
+  async function handleSave(data: FlatInput) {
+    setSaving(true);
+    setModalError(null);
+    try {
+      if (modalMode === "edit") {
+        if (!editing?.id) {
+          throw new Error("Missing flat id — cannot update");
+        }
+        await updateFlat(editing.id, {
+          ...data,
+          // Identity locked to the open card — never change floor/flat on edit
+          floorNumber: editing.floorNumber,
+          flatNumber: editing.flatNumber,
+        });
+        flashSuccess("Plot details updated");
+      } else {
+        await createFlat(data);
+        flashSuccess("Plot details saved");
+      }
+      setModalOpen(false);
+      setEditing(null);
+      await load();
+      notifyDataChanged("flat");
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : "Unable to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget?.id) return;
+    setDeleting(true);
+    try {
+      await deleteFlat(deleteTarget.id);
+      setDeleteTarget(null);
+      flashSuccess("Flat details removed — card kept as Unsold");
+      await load();
+      notifyDataChanged("flat");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to clear flat details");
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
     }
   }
 
   return (
     <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-bold text-navy">Flats</h1>
+          <p className="mt-0.5 text-xs text-slate-500">13 floors · 4 flats each · B-Wing registry</p>
+        </div>
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={openAdd}
+            className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-black px-3 text-[12px] font-semibold text-white shadow-sm transition hover:bg-slate-900 active:scale-[0.98] sm:px-4 sm:text-[13px]"
+          >
+            + Add Plot Details
+          </button>
+        )}
+      </div>
+
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
@@ -68,12 +196,42 @@ export default function FlatsPage() {
         className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-brand"
       />
 
-      {floors.map((fl) => {
-        const floorFlats = byFloor[fl];
-        const soldCount = floorFlats.filter((f) => f.status === "sold").length;
-        const rentCount = floorFlats.filter((f) => f.onRent).length;
-        return (
-          <section key={fl} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+      <div className="flex gap-2 overflow-x-auto pb-0.5 text-xs">
+        {(["all", "available", "sold", "rent"] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setStatus(s)}
+            className={
+              "shrink-0 rounded-full border px-3 py-1 font-medium capitalize transition " +
+              (status === s ? "border-brand bg-brand text-white" : "border-slate-200 bg-white text-slate-500")
+            }
+          >
+            {s === "all" ? "All" : statusLabel(s)}
+          </button>
+        ))}
+      </div>
+
+      {success && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm font-medium text-emerald-700">
+          {success}
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-600">
+          {error}
+        </div>
+      )}
+
+      {loading && <p className="py-8 text-center text-sm text-slate-400">Loading flats…</p>}
+
+      {!loading &&
+        floors.map((floor) => (
+          <section
+            key={floor.floorNumber}
+            className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm"
+          >
             <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand/10 text-brand" aria-hidden>
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
@@ -82,70 +240,93 @@ export default function FlatsPage() {
                 </svg>
               </span>
               <div>
-                <div className="text-sm font-semibold text-navy">Floor {fl}</div>
+                <div className="text-sm font-semibold text-navy">Floor {floor.floorNumber}</div>
                 <div className="text-xs text-slate-400">
-                  {floorFlats.length} flats · {soldCount} sold
-                  {rentCount > 0 ? ` · ${rentCount} on rent` : ""}
+                  {floor.total} Flats · {floor.sold} Sold · {floor.rent} On Rent · {floor.available} Unsold
                 </div>
               </div>
             </div>
 
             <ul className="divide-y divide-slate-100">
-              {floorFlats.map((f) => {
-                const unitLabel = String(f.floor * 100 + f.unit);
-                const unsold = f.status === "unsold";
-                const onRent = !!f.onRent && !unsold;
+              {floor.flats.map((f) => {
+                const available = f.status === "available";
+                const onRent = f.status === "rent";
+                const sold = f.status === "sold" || onRent;
+                const hasOwner = !!(f.ownerName || f.ownerMobile);
+                const hasRenter = !!(f.renterName || f.renterMobile);
+                const showRenter = onRent || hasRenter;
 
                 return (
                   <li key={f.id} className="px-3 py-3 sm:px-4">
                     <div className="min-w-0">
-                      {unsold ? (
+                      {!hasOwner && available ? (
                         <div className="font-medium text-slate-400">કોઈ માલિક નથી</div>
                       ) : (
                         <>
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Owner</span>
                             {onRent && (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+                              <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:border-violet-500/50 dark:bg-violet-900/60 dark:text-violet-200">
                                 <span aria-hidden>🔑</span> On Rent
                               </span>
                             )}
                           </div>
                           <div className="mt-0.5 text-[15px] font-bold leading-snug text-navy break-words">
-                            {f.ownerName}
+                            {f.ownerName || "—"}
                           </div>
-                          <div className="mt-0.5 text-sm font-medium leading-snug text-slate-600 break-words">
-                            {f.ownerNameGu}
-                          </div>
+                          {f.ownerMobile ? (
+                            <button
+                              type="button"
+                              onClick={() => copyPhone(f.id + "-owner-top", f.ownerMobile)}
+                              title="Copy owner number"
+                              className="mt-1 group inline-flex items-center gap-1.5 rounded-lg px-1 py-0.5 text-left hover:bg-brand/5"
+                            >
+                              <span className="text-sm font-medium tabular-nums text-brand">
+                                {formatPhone(f.ownerMobile)}
+                              </span>
+                              <span className="text-slate-400" aria-hidden>
+                                {copiedKey === f.id + "-owner-top" ? "✓" : "⧉"}
+                              </span>
+                            </button>
+                          ) : null}
                         </>
                       )}
                     </div>
 
-                    {onRent && (
-                      <div className="mt-2.5 rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2.5">
-                        <div className="text-[10px] font-bold uppercase tracking-wide text-violet-600">Renter</div>
-                        <div className="mt-0.5 text-sm font-bold leading-snug text-navy break-words">
-                          {f.renterName}
-                        </div>
-                        {f.renterNameGu && (
-                          <div className="mt-0.5 text-xs font-medium leading-snug text-slate-600 break-words">
-                            {f.renterNameGu}
+                    {showRenter && (
+                      <div className="mt-2.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 dark:border-violet-700/60 dark:bg-violet-950/55">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                            Renter
                           </div>
-                        )}
-                        {f.renterPhone && (
+                          {onRent && (
+                            <span className="rounded-full border border-violet-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:border-violet-500/50 dark:bg-violet-900/70 dark:text-violet-200">
+                              Rent
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-sm font-bold leading-snug text-navy break-words dark:text-slate-50">
+                          {f.renterName || "—"}
+                        </div>
+                        {f.renterMobile ? (
                           <button
                             type="button"
-                            onClick={() => copyPhone(f.id + "-renter", f.renterPhone!)}
+                            onClick={() => copyPhone(f.id + "-renter", f.renterMobile)}
                             title="Copy renter number"
-                            className="mt-1.5 group inline-flex items-center gap-1.5 rounded-lg px-1 py-0.5 text-left hover:bg-white/70"
+                            className="mt-1.5 group inline-flex items-center gap-1.5 rounded-lg border border-violet-100 bg-white/80 px-2 py-1 text-left hover:bg-white dark:border-violet-700/50 dark:bg-slate-900/60 dark:hover:bg-slate-900"
                           >
-                            <span className="text-sm font-medium tabular-nums text-brand">
-                              {formatPhone(f.renterPhone)}
+                            <span className="text-[10px] font-semibold uppercase text-violet-600 dark:text-violet-300">
+                              Mobile
                             </span>
-                            <span className="text-slate-400" aria-hidden>
+                            <span className="text-sm font-medium tabular-nums text-brand">
+                              {formatPhone(f.renterMobile)}
+                            </span>
+                            <span className="text-slate-400 dark:text-slate-300" aria-hidden>
                               {copiedKey === f.id + "-renter" ? "✓" : "⧉"}
                             </span>
                           </button>
+                        ) : (
+                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">No renter mobile</div>
                         )}
                       </div>
                     )}
@@ -154,58 +335,51 @@ export default function FlatsPage() {
                       <span
                         className={
                           "flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[11px] font-bold text-white " +
-                          badgeColor(f.unit, f.floor)
+                          badgeColor(f.flatNumber, f.floorNumber)
                         }
                       >
-                        {unitLabel}
+                        {f.flatNumber}
                       </span>
-
-                      {!unsold && f.ownerPhone ? (
-                        <button
-                          type="button"
-                          onClick={() => copyPhone(f.id + "-owner", f.ownerPhone)}
-                          title="Copy owner number"
-                          className="group inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-left transition hover:bg-brand/5"
-                        >
-                          <span className="text-[10px] font-semibold uppercase text-slate-400">Owner</span>
-                          <span className="text-sm font-medium tabular-nums text-brand">
-                            {formatPhone(f.ownerPhone)}
-                          </span>
-                          <span className="text-slate-400 group-hover:text-brand" aria-hidden>
-                            {copiedKey === f.id + "-owner" ? (
-                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-emerald-500" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <path d="M5 13l4 4L19 7" />
-                              </svg>
-                            ) : (
-                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="9" y="9" width="11" height="11" rx="2" />
-                                <path d="M5 15V5a2 2 0 0 1 2-2h10" />
-                              </svg>
-                            )}
-                          </span>
-                        </button>
-                      ) : null}
 
                       <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
                         {onRent && (
-                          <span className="rounded-full border border-violet-300 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
+                          <span className="rounded-full border border-violet-300 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 dark:border-violet-500/50 dark:bg-violet-900/60 dark:text-violet-200">
                             Rent
                           </span>
                         )}
                         <span
                           className={
                             "rounded-full border px-3 py-1 text-xs font-medium " +
-                            (unsold
-                              ? "border-slate-300 text-slate-500"
-                              : "border-emerald-400 text-emerald-600")
+                            (available
+                              ? "border-slate-300 text-slate-500 dark:border-slate-600 dark:text-slate-400"
+                              : "border-emerald-400 text-emerald-600 dark:border-emerald-500/60 dark:text-emerald-400")
                           }
                         >
-                          {unsold ? "Unsold" : "Sold"}
+                          {available ? "Unsold" : "Sold"}
                         </span>
+
+                        {isSuperAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(f)}
+                              className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(f)}
+                              className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
-                    {(copiedKey === f.id + "-owner" || copiedKey === f.id + "-renter") && (
+                    {(copiedKey === f.id + "-owner-top" || copiedKey === f.id + "-renter") && (
                       <div className="mt-1 text-[11px] font-medium text-emerald-600">Number copied</div>
                     )}
                   </li>
@@ -213,12 +387,33 @@ export default function FlatsPage() {
               })}
             </ul>
           </section>
-        );
-      })}
+        ))}
 
-      {floors.length === 0 && (
+      {!loading && floors.length === 0 && (
         <p className="py-10 text-center text-sm text-slate-400">No flats match your search.</p>
       )}
+
+      <PlotDetailsModal
+        open={modalOpen}
+        mode={modalMode}
+        initial={editing}
+        saving={saving}
+        error={modalError}
+        onClose={() => {
+          setModalOpen(false);
+          setEditing(null);
+          setModalError(null);
+        }}
+        onSubmit={handleSave}
+      />
+
+      <DeleteFlatDialog
+        open={!!deleteTarget}
+        flatNumber={deleteTarget?.flatNumber}
+        loading={deleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

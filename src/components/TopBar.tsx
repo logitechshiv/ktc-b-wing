@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import Chevron from "./Chevron";
-import RoleSwitcher from "./RoleSwitcher";
+import AdminButton from "./AdminButton";
+import ThemeToggle from "./ThemeToggle";
 
 export default function TopBar() {
   return (
@@ -21,7 +22,10 @@ export default function TopBar() {
               </div>
             </div>
           </Link>
-          <RoleSwitcher />
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeToggle />
+            <AdminButton />
+          </div>
         </div>
         <div className="h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
       </div>
