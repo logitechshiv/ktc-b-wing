@@ -4,6 +4,7 @@ import Providers from "@/components/Providers";
 import AppShell from "@/components/AppShell";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://ktc-b-wing.vercel.app"),
   title: "KCT-3 B-Wing Management System",
   description: "Kiran Classic Towers-3, B-Wing — Society Management System",
   manifest: "/manifest.json",

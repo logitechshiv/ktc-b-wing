@@ -38,6 +38,7 @@ function toExpenseRow(e: DashboardRecentExpense) {
 export default function DashboardHome() {
   const [dash, setDash] = useState<DashboardStats>(EMPTY_DASHBOARD);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const mock = mockStats();
   const pending = mock.dues.filter((d) => d.pending > 0);
@@ -52,8 +53,9 @@ export default function DashboardHome() {
     try {
       const stats = await readDashboard();
       setDash(stats);
-    } catch {
-      /* keep last known values */
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Unable to load dashboard");
     } finally {
       setLoading(false);
     }
@@ -78,6 +80,21 @@ export default function DashboardHome() {
 
   return (
     <div className="space-y-5">
+      {loadError && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+        >
+          <div className="font-semibold">Dashboard data unavailable</div>
+          <p className="mt-1 text-xs leading-relaxed text-rose-600/90">{loadError}</p>
+          <p className="mt-2 text-xs leading-relaxed text-rose-600/80">
+            If this mentions MongoDB IP whitelist, open Atlas → Network Access → Allow Access from
+            Anywhere (<code className="rounded bg-rose-100 px-1">0.0.0.0/0</code>) so Vercel can
+            connect.
+          </p>
+        </div>
+      )}
+
       <section className="overflow-hidden rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80 sm:p-5">
         <h2 className="mb-4 text-[17px] font-bold tracking-tight text-navy">Fund Summary</h2>
 
