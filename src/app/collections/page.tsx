@@ -16,7 +16,6 @@ import {
 } from "@/lib/payment-purposes-api";
 import {
   createPayment,
-  readPayments,
   type PaymentMode,
 } from "@/lib/payments-api";
 import { readFlats, type FlatRecord } from "@/lib/flats-api";
@@ -70,7 +69,6 @@ export default function CollectionsPage() {
 
   const [purposes, setPurposes] = useState<PurposeRecord[]>([]);
   const [purposeStats, setPurposeStats] = useState<PurposeStat[]>([]);
-  const [historyCount, setHistoryCount] = useState(0);
 
   const [flats, setFlats] = useState<FlatRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -128,19 +126,10 @@ export default function CollectionsPage() {
     return data.purposes;
   }, []);
 
-  const loadPayments = useCallback(async () => {
-    const data = await readPayments({
-      q: flatQ,
-      purposeId,
-      mode: modeFilter,
-    });
-    setHistoryCount(data.summary.totalPayments);
-  }, [flatQ, purposeId, modeFilter]);
-
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [purposeList] = await Promise.all([loadPurposes(), loadPayments()]);
+      const purposeList = await loadPurposes();
       const floors = await readFlats({ status: "all" });
       const flatList = floors.flatMap((f) => f.flats);
       setFlats(flatList);
@@ -165,7 +154,7 @@ export default function CollectionsPage() {
       setError(err instanceof Error ? err.message : "Unable to load payments");
       setPurposeReady(true);
     }
-  }, [loadPurposes, loadPayments]);
+  }, [loadPurposes]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -428,7 +417,7 @@ export default function CollectionsPage() {
       flashSuccess("Collection saved");
       closeCollectForm();
       // Live refresh: purpose list, history, and open Purpose Details (no page reload)
-      await Promise.all([loadPurposes(), loadPayments()]);
+      await loadPurposes();
       if (managingPurposeId) {
         await loadPurposeDetails(managingPurposeId);
       }
@@ -447,14 +436,6 @@ export default function CollectionsPage() {
         <p className="mt-1 text-xs leading-relaxed text-slate-500">
           ફ્લેટ અથવા માલિકથી શોધો · Purpose (Round) પસંદ કરો · Paid / Pending અને Payment Mode થી ફિલ્ટર કરો.
         </p>
-
-        {/* History tab only */}
-        <div className="mt-3 rounded-xl bg-slate-100 p-1">
-          <div className="rounded-lg bg-white py-2 text-center text-sm font-semibold text-navy shadow-sm">
-            History
-            <span className="ml-1.5 text-[11px] text-brand">{historyCount}</span>
-          </div>
-        </div>
 
         <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <label className="block">
