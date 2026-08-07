@@ -33,27 +33,84 @@ function emptyEntry(): VehicleEntryInput {
   };
 }
 
-function flatHasRenter(flat: FlatRecord | null) {
-  if (!flat) return false;
-  return !!(flat.renterName?.trim() || flat.renterMobile?.trim());
+type FlatOptionKind = "owner" | "renter" | "none";
+
+interface FlatDropdownOption {
+  /** Unique select value: `${flatId}|owner` | `${flatId}|renter` | `${flatId}|none` */
+  value: string;
+  flatId: string;
+  kind: FlatOptionKind;
+  label: string;
+  disabled: boolean;
 }
 
-function flatHasOwner(flat: FlatRecord | null) {
-  if (!flat) return false;
-  return !!flat.ownerName?.trim();
+function optionValue(flatId: string, kind: FlatOptionKind) {
+  return `${flatId}|${kind}`;
 }
 
-/** Occupied flats only (sold / rent with owner). */
+function parseOptionValue(value: string): { flatId: string; kind: FlatOptionKind } | null {
+  const sep = value.lastIndexOf("|");
+  if (sep <= 0) return null;
+  const flatId = value.slice(0, sep);
+  const kind = value.slice(sep + 1) as FlatOptionKind;
+  if (!flatId || (kind !== "owner" && kind !== "renter" && kind !== "none")) return null;
+  return { flatId, kind };
+}
+
+/** Sold / rent flats only (exclude unsold). */
 function isSoldFlat(flat: FlatRecord) {
-  return (flat.status === "sold" || flat.status === "rent") && !!flat.ownerName?.trim();
+  return flat.status === "sold" || flat.status === "rent";
 }
 
-/** Same style as Add Collection: flat + owner; include renter when present. */
-function flatOptionLabel(flat: FlatRecord) {
-  const owner = flat.ownerName.trim();
-  const renter = flat.renterName?.trim();
-  const name = renter ? `${owner} / ${renter}` : owner;
-  return `${flat.flatNumber} — ${name}`;
+/**
+ * Sold flats only — one row per flat:
+ * - has renter → `101-dipak bhai (Renter)`
+ * - owner only → `101-નિલેશ શાહ (Owner)`
+ * - no owner → `103-કોઈ માલિક નથી` (disabled)
+ */
+function buildFlatOptions(flats: FlatRecord[]): FlatDropdownOption[] {
+  const sorted = [...flats]
+    .filter(isSoldFlat)
+    .sort((a, b) => Number(a.flatNumber) - Number(b.flatNumber));
+  const options: FlatDropdownOption[] = [];
+
+  for (const flat of sorted) {
+    const ownerName = flat.ownerName?.trim() || "";
+    const renterName = flat.renterName?.trim() || "";
+    const hasRenter = !!(renterName || flat.renterMobile?.trim());
+
+    if (!ownerName) {
+      options.push({
+        value: optionValue(flat.id, "none"),
+        flatId: flat.id,
+        kind: "none",
+        label: `${flat.flatNumber}-કોઈ માલિક નથી`,
+        disabled: true,
+      });
+      continue;
+    }
+
+    if (hasRenter) {
+      options.push({
+        value: optionValue(flat.id, "renter"),
+        flatId: flat.id,
+        kind: "renter",
+        label: `${flat.flatNumber}-${renterName || "Renter"} (Renter)`,
+        disabled: false,
+      });
+      continue;
+    }
+
+    options.push({
+      value: optionValue(flat.id, "owner"),
+      flatId: flat.id,
+      kind: "owner",
+      label: `${flat.flatNumber}-${ownerName} (Owner)`,
+      disabled: false,
+    });
+  }
+
+  return options;
 }
 
 interface Props {
@@ -77,21 +134,31 @@ export default function VehicleModal({
 }: Props) {
   const [flats, setFlats] = useState<FlatRecord[]>([]);
   const [flatsLoading, setFlatsLoading] = useState(false);
-  const [flatId, setFlatId] = useState("");
-  const [vehicleOwnerType, setVehicleOwnerType] = useState<VehicleOwnerType>("owner");
+  /** Combined flat + owner/renter selection */
+  const [selection, setSelection] = useState("");
   const [entries, setEntries] = useState<VehicleEntryInput[]>([emptyEntry()]);
   const [localError, setLocalError] = useState<string | null>(null);
 
+  const flatOptions = useMemo(() => buildFlatOptions(flats), [flats]);
+
+  const parsed = useMemo(() => parseOptionValue(selection), [selection]);
   const selectedFlat = useMemo(
-    () => flats.find((f) => f.id === flatId) ?? null,
-    [flats, flatId]
+    () => (parsed ? flats.find((f) => f.id === parsed.flatId) ?? null : null),
+    [flats, parsed]
   );
+  const vehicleOwnerType: VehicleOwnerType =
+    parsed?.kind === "renter" ? "renter" : "owner";
 
-  const renterAvailable = flatHasRenter(selectedFlat);
-  const ownerAvailable = flatHasOwner(selectedFlat);
-  const canSave = !!selectedFlat && ownerAvailable;
+  const ownerAvailable = !!selectedFlat?.ownerName?.trim();
+  const canSave =
+    !!selectedFlat &&
+    !!parsed &&
+    parsed.kind !== "none" &&
+    (parsed.kind === "owner"
+      ? ownerAvailable
+      : !!(selectedFlat.renterName?.trim() || selectedFlat.renterMobile?.trim()));
 
-  // Load flats when modal opens
+  // Load all flats when modal opens
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -99,11 +166,7 @@ export default function VehicleModal({
     readFlats({ status: "all" })
       .then((floors) => {
         if (cancelled) return;
-        const list = floors
-          .flatMap((g) => g.flats)
-          .filter(isSoldFlat)
-          .sort((a, b) => Number(a.flatNumber) - Number(b.flatNumber));
-        setFlats(list);
+        setFlats(floors.flatMap((g) => g.flats).filter(isSoldFlat));
       })
       .catch(() => {
         if (!cancelled) setFlats([]);
@@ -121,8 +184,9 @@ export default function VehicleModal({
     if (!open) return;
     setLocalError(null);
     if (mode === "edit" && initial) {
-      setFlatId(initial.flatId || "");
-      setVehicleOwnerType(initial.vehicleOwnerType || "owner");
+      const kind: FlatOptionKind =
+        initial.vehicleOwnerType === "renter" ? "renter" : "owner";
+      setSelection(initial.flatId ? optionValue(initial.flatId, kind) : "");
       setEntries([
         {
           vehicleType: initial.vehicleType,
@@ -136,36 +200,45 @@ export default function VehicleModal({
         },
       ]);
     } else {
-      setFlatId("");
-      setVehicleOwnerType("owner");
+      setSelection("");
       setEntries([emptyEntry()]);
     }
   }, [open, mode, initial]);
 
   // Resolve flatId from flatNumber when editing older records without flatId
   useEffect(() => {
-    if (!open || !flats.length) return;
-    if (flatId && flats.some((f) => f.id === flatId)) return;
-    if (mode === "edit" && initial?.flatNumber) {
-      const match = flats.find((f) => f.flatNumber === initial.flatNumber);
-      if (match) setFlatId(match.id);
-    }
-  }, [open, flats, flatId, mode, initial]);
+    if (!open || !flats.length || mode !== "edit" || !initial) return;
+    if (selection && flatOptions.some((o) => o.value === selection && !o.disabled)) return;
 
-  // When flat changes (or renter disappears), keep owner type valid
-  useEffect(() => {
-    if (!selectedFlat) return;
-    if (!flatHasRenter(selectedFlat) && vehicleOwnerType === "renter") {
-      setVehicleOwnerType("owner");
+    const match = initial.flatId
+      ? flats.find((f) => f.id === initial.flatId)
+      : flats.find((f) => f.flatNumber === initial.flatNumber);
+    if (!match) return;
+
+    const preferRenter = initial.vehicleOwnerType === "renter";
+    const hasRenter = !!(match.renterName?.trim() || match.renterMobile?.trim());
+    // Dropdown shows only Renter when present; otherwise Owner
+    const kind: FlatOptionKind = hasRenter
+      ? "renter"
+      : match.ownerName?.trim()
+        ? "owner"
+        : "none";
+    if (kind === "none") return;
+    // Prefer matching saved ownerType when both were historically possible
+    if (preferRenter && hasRenter) {
+      setSelection(optionValue(match.id, "renter"));
+      return;
     }
-  }, [selectedFlat, vehicleOwnerType]);
+    setSelection(optionValue(match.id, kind));
+  }, [open, flats, flatOptions, selection, mode, initial]);
 
   if (!open) return null;
 
-  function onFlatChange(nextId: string) {
-    setFlatId(nextId);
+  function onSelectionChange(next: string) {
+    const parsedNext = parseOptionValue(next);
+    if (parsedNext?.kind === "none") return;
+    setSelection(next);
     setLocalError(null);
-    setVehicleOwnerType("owner");
   }
 
   function updateEntry(index: number, patch: Partial<VehicleEntryInput>) {
@@ -184,15 +257,15 @@ export default function VehicleModal({
     e.preventDefault();
     setLocalError(null);
 
-    if (!selectedFlat) {
-      setLocalError("Please select a Flat Number");
+    if (!selectedFlat || !parsed || parsed.kind === "none") {
+      setLocalError("Please select a Flat / Owner");
       return;
     }
     if (!ownerAvailable) {
       setLocalError("કોઈ માલિક નથી");
       return;
     }
-    if (vehicleOwnerType === "renter" && !renterAvailable) {
+    if (parsed.kind === "renter" && !selectedFlat.renterName?.trim() && !selectedFlat.renterMobile?.trim()) {
       setLocalError("No renter is available for this flat.");
       return;
     }
@@ -255,10 +328,18 @@ export default function VehicleModal({
   const fieldSelect = formSelect;
   const fieldReadonly = formFieldReadonly;
 
-  const displayOwnerName = selectedFlat?.ownerName?.trim() || "";
-  const displayOwnerMobile = selectedFlat?.ownerMobile?.trim() || "";
-  const displayRenterName = selectedFlat?.renterName?.trim() || "";
-  const displayRenterMobile = selectedFlat?.renterMobile?.trim() || "";
+  const contactName =
+    vehicleOwnerType === "renter"
+      ? selectedFlat?.renterName?.trim() || ""
+      : selectedFlat?.ownerName?.trim() || "";
+  const contactMobile =
+    vehicleOwnerType === "renter"
+      ? selectedFlat?.renterMobile?.trim() || ""
+      : selectedFlat?.ownerMobile?.trim() || "";
+  const nameLabel =
+    vehicleOwnerType === "renter" ? "Renter Name (Gujarati)" : "Owner Name (Gujarati)";
+  const mobileLabel = vehicleOwnerType === "renter" ? "Renter Mobile" : "Owner Mobile";
+  const typeLabel = vehicleOwnerType === "renter" ? "Renter" : "Owner";
 
   return (
     <div
@@ -293,8 +374,8 @@ export default function VehicleModal({
             <label className="block text-xs font-semibold text-slate-600">
               Flat / Owner
               <select
-                value={flatId}
-                onChange={(e) => onFlatChange(e.target.value)}
+                value={selection}
+                onChange={(e) => onSelectionChange(e.target.value)}
                 disabled={flatsLoading}
                 required
                 className={
@@ -303,22 +384,22 @@ export default function VehicleModal({
                 }
               >
                 {flatsLoading && <option value="">Loading flats…</option>}
-                {!flatsLoading && flats.length === 0 && (
+                {!flatsLoading && flatOptions.length === 0 && (
                   <option value="">No flats found</option>
                 )}
-                {!flatsLoading && flats.length > 0 && (
+                {!flatsLoading && flatOptions.length > 0 && (
                   <option value="">Select flat…</option>
                 )}
                 {!flatsLoading &&
-                  flats.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {flatOptionLabel(f)}
+                  flatOptions.map((o) => (
+                    <option key={o.value} value={o.value} disabled={o.disabled}>
+                      {o.label}
                     </option>
                   ))}
               </select>
             </label>
 
-            {selectedFlat && !ownerAvailable && (
+            {selectedFlat && parsed?.kind === "none" && (
               <div
                 role="alert"
                 className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-800"
@@ -327,68 +408,24 @@ export default function VehicleModal({
               </div>
             )}
 
-            {selectedFlat && ownerAvailable && (
+            {selectedFlat && canSave && (
               <>
-                {renterAvailable ? (
-                  <>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Renter Name (Gujarati)
-                      <input value={displayRenterName} readOnly className={fieldReadonly} />
-                    </label>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Renter Mobile
-                      <input value={displayRenterMobile} readOnly className={fieldReadonly} />
-                    </label>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Owner Name (Gujarati)
-                      <input value={displayOwnerName} readOnly className={fieldReadonly} />
-                    </label>
-
-                    <div>
-                      <div className="text-xs font-semibold text-slate-600">Vehicle Belongs To</div>
-                      <div className="mt-1 flex gap-2">
-                        {(
-                          [
-                            ["owner", "Owner"],
-                            ["renter", "Renter"],
-                          ] as const
-                        ).map(([value, label]) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => {
-                              setVehicleOwnerType(value);
-                              setLocalError(null);
-                            }}
-                            className={
-                              "h-10 flex-1 rounded-xl border text-sm font-semibold transition " +
-                              (vehicleOwnerType === value
-                                ? "border-brand bg-brand text-white"
-                                : "border-slate-200 bg-white text-slate-600")
-                            }
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Owner Name (Gujarati)
-                      <input value={displayOwnerName} readOnly className={fieldReadonly} />
-                    </label>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Owner Mobile
-                      <input value={displayOwnerMobile} readOnly className={fieldReadonly} />
-                    </label>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Owner Type
-                      <input value="Owner" readOnly className={fieldReadonly} />
-                    </label>
-                  </>
-                )}
+                <label className="block text-xs font-semibold text-slate-600">
+                  Flat Number
+                  <input value={selectedFlat.flatNumber} readOnly className={fieldReadonly} />
+                </label>
+                <label className="block text-xs font-semibold text-slate-600">
+                  {nameLabel}
+                  <input value={contactName} readOnly className={fieldReadonly} />
+                </label>
+                <label className="block text-xs font-semibold text-slate-600">
+                  {mobileLabel}
+                  <input value={contactMobile} readOnly className={fieldReadonly} />
+                </label>
+                <label className="block text-xs font-semibold text-slate-600">
+                  Owner Type
+                  <input value={typeLabel} readOnly className={fieldReadonly} />
+                </label>
               </>
             )}
           </section>
