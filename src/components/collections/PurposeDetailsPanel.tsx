@@ -126,24 +126,7 @@ export default function PurposeDetailsPanel({
             </p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {isSuperAdmin && onAddCollection && (
-            <button
-              type="button"
-              onClick={onAddCollection}
-              className="text-xs font-semibold text-brand hover:underline"
-            >
-              + Add Collection
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-xs font-semibold text-slate-400 hover:text-navy"
-          >
-            Close
-          </button>
-        </div>
+        
       </div>
 
       {loading && <p className="py-6 text-center text-sm text-slate-400">Loading purpose details…</p>}
