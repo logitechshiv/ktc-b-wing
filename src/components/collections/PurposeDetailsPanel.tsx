@@ -70,6 +70,8 @@ interface Props {
   searchQuery?: string;
   /** all = paid+pending sections; paid | pending = one section */
   statusFilter?: "all" | "paid" | "pending";
+  /** all = every mode; cash | bank | upi = paid records only */
+  modeFilter?: "all" | "cash" | "bank" | "upi";
   onClose: () => void;
   onAddCollection?: () => void;
 }
@@ -81,6 +83,7 @@ export default function PurposeDetailsPanel({
   isSuperAdmin,
   searchQuery = "",
   statusFilter = "all",
+  modeFilter = "all",
   onClose,
   onAddCollection,
 }: Props) {
@@ -90,14 +93,16 @@ export default function PurposeDetailsPanel({
 
   const paid = useMemo(() => {
     if (!details) return [];
-    return details.paid.filter((row) =>
-      matchesSearch(q, row.flatNumber, row.ownerName)
-    );
-  }, [details, q]);
+    return details.paid.filter((row) => {
+      if (!matchesSearch(q, row.flatNumber, row.ownerName)) return false;
+      if (modeFilter === "all") return true;
+      return String(row.paymentMode || "").toLowerCase() === modeFilter;
+    });
+  }, [details, q, modeFilter]);
 
   const pending = useMemo(() => {
     if (!details) return [];
-    // Sold + owner + unpaid only (server already filters; keep client guard)
+    // Pending has no payment yet — mode filter does not apply
     return details.pending.filter(
       (row) =>
         flatHasOwner(row.ownerName, row.hasOwner) &&

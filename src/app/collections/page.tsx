@@ -540,10 +540,10 @@ export default function CollectionsPage() {
                   <span className="font-semibold text-navy">{shortPurposeTitle(purpose.title)}:</span>{" "}
                   {s.total} ફ્લેટ માંથી{" "}
                   <span className="font-semibold text-emerald-600">{s.collected}</span> ફ્લેટનું કલેક્શન
-                  આવી ગયું છે
+                  {s.collected === 0 ? " આવ્યું છે" : " આવી ગયું છે"}
                   {s.pending > 0 ? (
                     <>
-                      , <span className="font-semibold text-amber-600">{s.pending}</span> ફ્લેટના{" "}
+                      . <span className="font-semibold text-amber-600">{s.pending}</span> ફ્લેટના{" "}
                       <span className="font-semibold text-amber-600">{inr(s.pendingAmount)}</span> બાકી છે.
                     </>
                   ) : (
@@ -659,6 +659,7 @@ export default function CollectionsPage() {
           isSuperAdmin={isSuperAdmin}
           searchQuery={flatQ}
           statusFilter={statusFilter}
+          modeFilter={modeFilter}
           onClose={closeManagePurpose}
           onAddCollection={isSuperAdmin ? openCollectForm : undefined}
         />

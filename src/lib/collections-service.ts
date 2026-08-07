@@ -7,10 +7,15 @@ import { PAYMENT_MODES, type DbPaymentMode } from "@/models/Payment";
 
 export type CollectionStatusFilter = "all" | "paid" | "pending";
 
+/** Total flats in the society (all documents in flats). */
+export async function countTotalFlats(): Promise<number> {
+  return Flat.countDocuments({});
+}
+
 /** Flats that can pay: sold + non-empty owner name. */
 export async function countPayableFlats(): Promise<number> {
   return Flat.countDocuments({
-    status: "sold",
+    status: { $in: ["sold", "rent"] },
     ownerName: { $exists: true, $nin: [null, ""] },
   });
 }
@@ -26,14 +31,18 @@ export interface PurposeProgressStat {
 }
 
 /**
- * Per-purpose progress using aggregation (distinct paid flats + collected sum).
+ * Per-purpose progress for the summary line.
+ * total = all flats in society
+ * collected = distinct paid flats for the purpose
+ * pending = total − collected
+ * pendingAmount = pending × amountPerFlat
  */
 export async function getPurposeProgressStats(
   purposes: Array<{ id: string; amount: number }>
 ): Promise<PurposeProgressStat[]> {
   if (purposes.length === 0) return [];
 
-  const payableFlats = await countPayableFlats();
+  const totalFlats = await countTotalFlats();
   const ids = purposes
     .map((p) => p.id)
     .filter((id) => mongoose.Types.ObjectId.isValid(id))
@@ -65,13 +74,14 @@ export async function getPurposeProgressStats(
 
   return purposes.map((p) => {
     const stats = paidMap.get(p.id) || { paidFlats: 0, collectedAmount: 0 };
-    const pending = Math.max(0, payableFlats - stats.paidFlats);
+    const collected = stats.paidFlats;
+    const pending = Math.max(0, totalFlats - collected);
     const collectionPercent =
-      payableFlats > 0 ? Math.round((stats.paidFlats / payableFlats) * 100) : 0;
+      totalFlats > 0 ? Math.round((collected / totalFlats) * 100) : 0;
     return {
       purposeId: p.id,
-      total: payableFlats,
-      collected: stats.paidFlats,
+      total: totalFlats,
+      collected,
       pending,
       pendingAmount: pending * (p.amount || 0),
       collectedAmount: stats.collectedAmount,
