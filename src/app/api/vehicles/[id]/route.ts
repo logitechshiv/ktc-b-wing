@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import Vehicle from "@/models/Vehicle";
+import Flat from "@/models/Flat";
 import { requireSuperAdmin } from "@/lib/require-super-admin";
 import { serializeVehicle, validateVehiclePayload } from "@/lib/vehicle-utils";
 
@@ -53,6 +54,41 @@ export async function PUT(request: Request, context: RouteContext) {
     }
 
     const { data } = validated;
+
+    // Flats are the single source of truth for contact details
+    const flat = data.flatId
+      ? await Flat.findById(data.flatId).lean()
+      : await Flat.findOne({ flatNumber: data.flatNumber }).lean();
+
+    if (!flat) {
+      return NextResponse.json(
+        { success: false, message: "Selected flat was not found" },
+        { status: 400 }
+      );
+    }
+
+    const flatOwnerName = String(flat.ownerName || "").trim();
+    if (!flatOwnerName) {
+      return NextResponse.json(
+        { success: false, message: "કોઈ માલિક નથી — cannot save a vehicle for this flat" },
+        { status: 400 }
+      );
+    }
+
+    const wantsRenter = data.vehicleOwnerType === "renter";
+    const flatRenterName = String(flat.renterName || "").trim();
+    if (wantsRenter && !flatRenterName && !String(flat.renterMobile || "").trim()) {
+      return NextResponse.json(
+        { success: false, message: "No renter is available for this flat" },
+        { status: 400 }
+      );
+    }
+
+    const contactName = wantsRenter ? flatRenterName : flatOwnerName;
+    const contactMobile = wantsRenter
+      ? String(flat.renterMobile || "").trim()
+      : String(flat.ownerMobile || "").trim();
+
     if (data.vehicleNumber) {
       const duplicate = await Vehicle.findOne({
         vehicleNumber: data.vehicleNumber,
@@ -67,8 +103,20 @@ export async function PUT(request: Request, context: RouteContext) {
     }
 
     const setFields: Record<string, unknown> = {
-      ...data,
-      vehicleOwnerType: data.vehicleOwnerType === "renter" ? "renter" : "owner",
+      floorNumber: flat.floorNumber,
+      flatNumber: String(flat.flatNumber),
+      flatId: flat._id,
+      vehicleOwnerType: wantsRenter ? "renter" : "owner",
+      ownerName: contactName,
+      ownerMobile: contactMobile,
+      vehicleType: data.vehicleType,
+      vehicleNumber: data.vehicleNumber,
+      stickerIssued: data.stickerIssued,
+      stickerNumber: "",
+      color: "",
+      brand: "",
+      model: "",
+      notes: data.notes,
     };
     const unsetFields: Record<string, "" | 1> = {
       ownerNameGujarati: "",

@@ -9,9 +9,8 @@ import type {
   VehicleRecord,
   VehicleType,
 } from "@/lib/vehicles-api";
+import { readFlats, type FlatRecord } from "@/lib/flats-api";
 import { formField, formFieldReadonly, formSelect } from "@/lib/form-styles";
-
-const FLOORS = Array.from({ length: 13 }, (_, i) => i + 1);
 
 const VEHICLE_TYPE_OPTIONS: { value: VehicleType; label: string }[] = [
   { value: "car", label: "Car" },
@@ -20,10 +19,6 @@ const VEHICLE_TYPE_OPTIONS: { value: VehicleType; label: string }[] = [
   { value: "auto", label: "Auto" },
   { value: "other", label: "Other" },
 ];
-
-function flatsForFloor(floor: number) {
-  return [1, 2, 3, 4].map((u) => String(floor * 100 + u));
-}
 
 function emptyEntry(): VehicleEntryInput {
   return {
@@ -38,16 +33,27 @@ function emptyEntry(): VehicleEntryInput {
   };
 }
 
-interface FlatContact {
-  ownerName: string;
-  ownerMobile: string;
-  renterName: string;
-  renterMobile: string;
+function flatHasRenter(flat: FlatRecord | null) {
+  if (!flat) return false;
+  return !!(flat.renterName?.trim() || flat.renterMobile?.trim());
 }
 
-function hasRenter(flat: FlatContact | null) {
+function flatHasOwner(flat: FlatRecord | null) {
   if (!flat) return false;
-  return !!(flat.renterName || flat.renterMobile);
+  return !!flat.ownerName?.trim();
+}
+
+/** Occupied flats only (sold / rent with owner). */
+function isSoldFlat(flat: FlatRecord) {
+  return (flat.status === "sold" || flat.status === "rent") && !!flat.ownerName?.trim();
+}
+
+/** Same style as Add Collection: flat + owner; include renter when present. */
+function flatOptionLabel(flat: FlatRecord) {
+  const owner = flat.ownerName.trim();
+  const renter = flat.renterName?.trim();
+  const name = renter ? `${owner} / ${renter}` : owner;
+  return `${flat.flatNumber} — ${name}`;
 }
 
 interface Props {
@@ -69,39 +75,54 @@ export default function VehicleModal({
   onClose,
   onSubmit,
 }: Props) {
-  const [floorNumber, setFloorNumber] = useState(1);
-  const [flatNumber, setFlatNumber] = useState("101");
+  const [flats, setFlats] = useState<FlatRecord[]>([]);
+  const [flatsLoading, setFlatsLoading] = useState(false);
+  const [flatId, setFlatId] = useState("");
   const [vehicleOwnerType, setVehicleOwnerType] = useState<VehicleOwnerType>("owner");
-  const [contactName, setContactName] = useState("");
-  const [contactMobile, setContactMobile] = useState("");
   const [entries, setEntries] = useState<VehicleEntryInput[]>([emptyEntry()]);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [prefilling, setPrefilling] = useState(false);
-  const [flatContact, setFlatContact] = useState<FlatContact | null>(null);
 
-  const flatOptions = useMemo(() => flatsForFloor(floorNumber), [floorNumber]);
-  const renterAvailable = hasRenter(flatContact);
+  const selectedFlat = useMemo(
+    () => flats.find((f) => f.id === flatId) ?? null,
+    [flats, flatId]
+  );
 
-  function applyContactFromFlat(type: VehicleOwnerType, flat: FlatContact | null) {
-    if (!flat) return;
-    if (type === "renter") {
-      setContactName(flat.renterName);
-      setContactMobile(flat.renterMobile);
-    } else {
-      setContactName(flat.ownerName);
-      setContactMobile(flat.ownerMobile);
-    }
-  }
+  const renterAvailable = flatHasRenter(selectedFlat);
+  const ownerAvailable = flatHasOwner(selectedFlat);
+  const canSave = !!selectedFlat && ownerAvailable;
 
+  // Load flats when modal opens
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setFlatsLoading(true);
+    readFlats({ status: "all" })
+      .then((floors) => {
+        if (cancelled) return;
+        const list = floors
+          .flatMap((g) => g.flats)
+          .filter(isSoldFlat)
+          .sort((a, b) => Number(a.flatNumber) - Number(b.flatNumber));
+        setFlats(list);
+      })
+      .catch(() => {
+        if (!cancelled) setFlats([]);
+      })
+      .finally(() => {
+        if (!cancelled) setFlatsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // Reset form when opened
   useEffect(() => {
     if (!open) return;
     setLocalError(null);
     if (mode === "edit" && initial) {
-      setFloorNumber(initial.floorNumber);
-      setFlatNumber(initial.flatNumber);
+      setFlatId(initial.flatId || "");
       setVehicleOwnerType(initial.vehicleOwnerType || "owner");
-      setContactName(initial.ownerName);
-      setContactMobile(initial.ownerMobile);
       setEntries([
         {
           vehicleType: initial.vehicleType,
@@ -115,82 +136,37 @@ export default function VehicleModal({
         },
       ]);
     } else {
-      setFloorNumber(1);
-      setFlatNumber("101");
+      setFlatId("");
       setVehicleOwnerType("owner");
-      setContactName("");
-      setContactMobile("");
-      setFlatContact(null);
       setEntries([emptyEntry()]);
     }
   }, [open, mode, initial]);
 
+  // Resolve flatId from flatNumber when editing older records without flatId
   useEffect(() => {
-    if (mode === "add" && !flatOptions.includes(flatNumber)) {
-      setFlatNumber(flatOptions[0]);
+    if (!open || !flats.length) return;
+    if (flatId && flats.some((f) => f.id === flatId)) return;
+    if (mode === "edit" && initial?.flatNumber) {
+      const match = flats.find((f) => f.flatNumber === initial.flatNumber);
+      if (match) setFlatId(match.id);
     }
-  }, [flatOptions, flatNumber, mode]);
+  }, [open, flats, flatId, mode, initial]);
 
-  // Load flat owner/renter whenever floor/flat changes
+  // When flat changes (or renter disappears), keep owner type valid
   useEffect(() => {
-    if (!open || !flatNumber) return;
-    let cancelled = false;
-    setPrefilling(true);
-    fetch(`/api/flats?q=${encodeURIComponent(flatNumber)}`, { cache: "no-store" })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || cancelled) return;
-        const floors = (data.floors as Array<{ flats: Array<Record<string, unknown>> }>) || [];
-        const match = floors
-          .flatMap((f) => f.flats || [])
-          .find((f) => String(f.flatNumber) === flatNumber);
-
-        if (!match || cancelled) {
-          setFlatContact(null);
-          return;
-        }
-
-        const next: FlatContact = {
-          ownerName: String(match.ownerName ?? ""),
-          ownerMobile: String(match.ownerMobile ?? ""),
-          renterName: String(match.renterName ?? ""),
-          renterMobile: String(match.renterMobile ?? ""),
-        };
-        setFlatContact(next);
-
-        if (!hasRenter(next)) {
-          setVehicleOwnerType((prev) => (prev === "renter" ? "owner" : prev));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setFlatContact(null);
-      })
-      .finally(() => {
-        if (!cancelled) setPrefilling(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, floorNumber, flatNumber]);
-
-  // Keep displayed contact in sync with belongs-to + flat registry
-  useEffect(() => {
-    if (!open || !flatContact) return;
-    if (vehicleOwnerType === "renter" && !hasRenter(flatContact)) return;
-    applyContactFromFlat(vehicleOwnerType, flatContact);
-  }, [open, flatContact, vehicleOwnerType]);
-
-  function selectBelongsTo(type: VehicleOwnerType) {
-    setLocalError(null);
-    if (type === "renter" && !renterAvailable) {
-      setLocalError("No renter is available for this flat.");
-      return;
+    if (!selectedFlat) return;
+    if (!flatHasRenter(selectedFlat) && vehicleOwnerType === "renter") {
+      setVehicleOwnerType("owner");
     }
-    setVehicleOwnerType(type);
-    applyContactFromFlat(type, flatContact);
-  }
+  }, [selectedFlat, vehicleOwnerType]);
 
   if (!open) return null;
+
+  function onFlatChange(nextId: string) {
+    setFlatId(nextId);
+    setLocalError(null);
+    setVehicleOwnerType("owner");
+  }
 
   function updateEntry(index: number, patch: Partial<VehicleEntryInput>) {
     setEntries((prev) => prev.map((e, i) => (i === index ? { ...e, ...patch } : e)));
@@ -208,19 +184,27 @@ export default function VehicleModal({
     e.preventDefault();
     setLocalError(null);
 
+    if (!selectedFlat) {
+      setLocalError("Please select a Flat Number");
+      return;
+    }
+    if (!ownerAvailable) {
+      setLocalError("કોઈ માલિક નથી");
+      return;
+    }
     if (vehicleOwnerType === "renter" && !renterAvailable) {
       setLocalError("No renter is available for this flat.");
       return;
     }
 
-    if (contactMobile && !/^\d{10}$/.test(contactMobile.trim())) {
-      setLocalError(
-        vehicleOwnerType === "renter"
-          ? "Renter Mobile must be exactly 10 digits"
-          : "Owner Mobile must be exactly 10 digits"
-      );
-      return;
-    }
+    const contactName =
+      vehicleOwnerType === "renter"
+        ? selectedFlat.renterName.trim()
+        : selectedFlat.ownerName.trim();
+    const contactMobile =
+      vehicleOwnerType === "renter"
+        ? selectedFlat.renterMobile.trim()
+        : selectedFlat.ownerMobile.trim();
 
     const cleaned: VehicleEntryInput[] = [];
     const seen = new Set<string>();
@@ -251,11 +235,12 @@ export default function VehicleModal({
     }
 
     const contact = {
-      floorNumber,
-      flatNumber,
+      floorNumber: selectedFlat.floorNumber,
+      flatNumber: selectedFlat.flatNumber,
+      flatId: selectedFlat.id,
       vehicleOwnerType,
-      ownerName: contactName.trim(),
-      ownerMobile: contactMobile.trim(),
+      ownerName: contactName,
+      ownerMobile: contactMobile,
     };
 
     if (mode === "edit") {
@@ -270,9 +255,10 @@ export default function VehicleModal({
   const fieldSelect = formSelect;
   const fieldReadonly = formFieldReadonly;
 
-  const nameLabel =
-    vehicleOwnerType === "renter" ? "Renter Name (Gujarati)" : "Owner Name (Gujarati)";
-  const mobileLabel = vehicleOwnerType === "renter" ? "Renter Mobile" : "Owner Mobile";
+  const displayOwnerName = selectedFlat?.ownerName?.trim() || "";
+  const displayOwnerMobile = selectedFlat?.ownerMobile?.trim() || "";
+  const displayRenterName = selectedFlat?.renterName?.trim() || "";
+  const displayRenterMobile = selectedFlat?.renterMobile?.trim() || "";
 
   return (
     <div
@@ -303,97 +289,108 @@ export default function VehicleModal({
         <div className="space-y-5">
           <section className="space-y-3">
             <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Owner Information</h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block text-xs font-semibold text-slate-600">
-                Floor Number
-                <select
-                  value={floorNumber}
-                  onChange={(e) => setFloorNumber(Number(e.target.value))}
-                  className={fieldSelect}
-                  required
-                >
-                  {FLOORS.map((f) => (
-                    <option key={f} value={f}>
-                      Floor {f}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-xs font-semibold text-slate-600">
-                Flat Number
-                <select
-                  value={flatNumber}
-                  onChange={(e) => setFlatNumber(e.target.value)}
-                  className={fieldSelect}
-                  required
-                >
-                  {flatOptions.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
 
-            <div>
-              <div className="text-xs font-semibold text-slate-600">Vehicle Belongs To</div>
-              <div className="mt-1 flex gap-2">
-                {(
-                  [
-                    ["owner", "Owner"],
-                    ["renter", "Renter"],
-                  ] as const
-                ).map(([value, label]) => {
-                  const disabled = value === "renter" && !renterAvailable && !prefilling;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => selectBelongsTo(value)}
-                      className={
-                        "h-10 flex-1 rounded-xl border text-sm font-semibold transition " +
-                        (vehicleOwnerType === value
-                          ? "border-brand bg-brand text-white"
-                          : "border-slate-200 bg-white text-slate-600") +
-                        (disabled ? " cursor-not-allowed opacity-45" : "")
-                      }
-                      title={
-                        disabled ? "No renter is available for this flat." : undefined
-                      }
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
+            <label className="block text-xs font-semibold text-slate-600">
+              Flat / Owner
+              <select
+                value={flatId}
+                onChange={(e) => onFlatChange(e.target.value)}
+                disabled={flatsLoading}
+                required
+                className={
+                  fieldSelect +
+                  " disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60"
+                }
+              >
+                {flatsLoading && <option value="">Loading flats…</option>}
+                {!flatsLoading && flats.length === 0 && (
+                  <option value="">No flats found</option>
+                )}
+                {!flatsLoading && flats.length > 0 && (
+                  <option value="">Select flat…</option>
+                )}
+                {!flatsLoading &&
+                  flats.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {flatOptionLabel(f)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+
+            {selectedFlat && !ownerAvailable && (
+              <div
+                role="alert"
+                className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-800"
+              >
+                કોઈ માલિક નથી
               </div>
-              {!prefilling && !renterAvailable && (
-                <p className="mt-1.5 text-[11px] text-amber-600">
-                  No renter is available for this flat.
-                </p>
-              )}
-            </div>
-
-            {prefilling && (
-              <p className="text-[11px] text-slate-400">Loading contact from flat registry…</p>
             )}
 
-            <label className="block text-xs font-semibold text-slate-600">
-              {nameLabel}
-              <input value={contactName} readOnly className={fieldReadonly} />
-            </label>
-            <label className="block text-xs font-semibold text-slate-600">
-              {mobileLabel}
-              <input
-                value={contactMobile}
-                readOnly
-                inputMode="numeric"
-                maxLength={10}
-                placeholder="10 digits"
-                className={fieldReadonly}
-              />
-            </label>
+            {selectedFlat && ownerAvailable && (
+              <>
+                {renterAvailable ? (
+                  <>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Renter Name (Gujarati)
+                      <input value={displayRenterName} readOnly className={fieldReadonly} />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Renter Mobile
+                      <input value={displayRenterMobile} readOnly className={fieldReadonly} />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Owner Name (Gujarati)
+                      <input value={displayOwnerName} readOnly className={fieldReadonly} />
+                    </label>
+
+                    <div>
+                      <div className="text-xs font-semibold text-slate-600">Vehicle Belongs To</div>
+                      <div className="mt-1 flex gap-2">
+                        {(
+                          [
+                            ["owner", "Owner"],
+                            ["renter", "Renter"],
+                          ] as const
+                        ).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => {
+                              setVehicleOwnerType(value);
+                              setLocalError(null);
+                            }}
+                            className={
+                              "h-10 flex-1 rounded-xl border text-sm font-semibold transition " +
+                              (vehicleOwnerType === value
+                                ? "border-brand bg-brand text-white"
+                                : "border-slate-200 bg-white text-slate-600")
+                            }
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Owner Name (Gujarati)
+                      <input value={displayOwnerName} readOnly className={fieldReadonly} />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Owner Mobile
+                      <input value={displayOwnerMobile} readOnly className={fieldReadonly} />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Owner Type
+                      <input value="Owner" readOnly className={fieldReadonly} />
+                    </label>
+                  </>
+                )}
+              </>
+            )}
           </section>
 
           {entries.map((entry, index) => (
@@ -507,8 +504,8 @@ export default function VehicleModal({
           </button>
           <button
             type="submit"
-            disabled={saving}
-            className="h-11 flex-1 rounded-xl bg-black text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-70"
+            disabled={saving || !canSave}
+            className="h-11 flex-1 rounded-xl bg-black text-sm font-semibold text-white hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving
               ? "Saving…"

@@ -5,6 +5,7 @@ export interface VehicleRecord {
   id: string;
   floorNumber: number;
   flatNumber: string;
+  flatId?: string | null;
   vehicleOwnerType: VehicleOwnerType;
   ownerName: string;
   ownerMobile: string;
@@ -58,6 +59,7 @@ export interface VehicleEntryInput {
 export interface VehicleInput extends VehicleEntryInput {
   floorNumber: number;
   flatNumber: string;
+  flatId?: string | null;
   vehicleOwnerType?: VehicleOwnerType;
   ownerName?: string;
   ownerMobile?: string;
@@ -67,6 +69,7 @@ export interface VehicleInput extends VehicleEntryInput {
 export interface BulkVehicleInput {
   floorNumber: number;
   flatNumber: string;
+  flatId?: string | null;
   vehicleOwnerType?: VehicleOwnerType;
   ownerName?: string;
   ownerMobile?: string;
@@ -84,6 +87,7 @@ function toVehicle(raw: Record<string, unknown>): VehicleRecord {
     id: String(raw.id ?? raw._id),
     floorNumber: Number(raw.floorNumber),
     flatNumber: String(raw.flatNumber ?? ""),
+    flatId: raw.flatId ? String(raw.flatId) : null,
     vehicleOwnerType: String(raw.vehicleOwnerType ?? "owner").toLowerCase() === "renter" ? "renter" : "owner",
     ownerName: String(raw.ownerName ?? ""),
     ownerMobile: String(raw.ownerMobile ?? ""),

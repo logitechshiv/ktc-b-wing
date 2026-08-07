@@ -5,6 +5,7 @@ export function serializeVehicle(doc: {
   _id: { toString(): string };
   floorNumber: number;
   flatNumber: string;
+  flatId?: { toString(): string } | null;
   vehicleOwnerType?: DbVehicleOwnerType | null;
   ownerName?: string | null;
   /** @deprecated legacy */
@@ -29,6 +30,7 @@ export function serializeVehicle(doc: {
     id: doc._id.toString(),
     floorNumber: doc.floorNumber,
     flatNumber: doc.flatNumber,
+    flatId: doc.flatId ? doc.flatId.toString() : null,
     vehicleOwnerType: (String(doc.vehicleOwnerType ?? "owner").toLowerCase() === "renter"
       ? "renter"
       : "owner") as DbVehicleOwnerType,
@@ -53,6 +55,7 @@ const MOBILE_RE = /^\d{10}$/;
 export interface VehiclePayload {
   floorNumber: number;
   flatNumber: string;
+  flatId: string | null;
   vehicleOwnerType: DbVehicleOwnerType;
   ownerName: string;
   ownerMobile: string;
@@ -68,25 +71,32 @@ export interface VehiclePayload {
 
 type VehicleOnlyFields = Omit<
   VehiclePayload,
-  "floorNumber" | "flatNumber" | "vehicleOwnerType" | "ownerName" | "ownerMobile"
+  "floorNumber" | "flatNumber" | "flatId" | "vehicleOwnerType" | "ownerName" | "ownerMobile"
 >;
 
 function parseOwnerFields(body: Record<string, unknown>) {
-  const floorNumber = Number(body.floorNumber);
+  const flatId = String(body.flatId ?? "").trim() || null;
   const flatNumber = String(body.flatNumber ?? "").trim();
-  const rawType = String(body.vehicleOwnerType ?? "owner").trim().toLowerCase();
+  const rawFloor = Number(body.floorNumber);
+  // Floor is derived from the flats registry on save; accept when provided
+  const floorNumber =
+    rawFloor >= 1 && rawFloor <= 13 ? rawFloor : flatId || flatNumber ? 1 : 0;
+  const rawType = String(body.vehicleOwnerType ?? body.ownerType ?? "owner")
+    .trim()
+    .toLowerCase();
   const vehicleOwnerType = (
     VEHICLE_OWNER_TYPES.includes(rawType as DbVehicleOwnerType) ? rawType : "owner"
   ) as DbVehicleOwnerType;
+  // Contact name/mobile are overwritten from the flats collection on the server
   const ownerName =
     String(body.ownerName ?? "").trim() || String(body.ownerNameGujarati ?? "").trim();
-  const ownerMobile = String(body.ownerMobile ?? "").trim();
+  const ownerMobile = String(body.ownerMobile ?? body.mobile ?? "").trim();
 
-  if (!floorNumber || floorNumber < 1 || floorNumber > 13) {
-    return { ok: false as const, message: "Floor Number is required (1–13)" };
-  }
-  if (!flatNumber) {
+  if (!flatId && !flatNumber) {
     return { ok: false as const, message: "Flat Number is required" };
+  }
+  if (!flatId && (!floorNumber || floorNumber < 1 || floorNumber > 13)) {
+    return { ok: false as const, message: "Floor Number is required (1–13)" };
   }
   if (ownerMobile && !MOBILE_RE.test(ownerMobile)) {
     return {
@@ -100,7 +110,14 @@ function parseOwnerFields(body: Record<string, unknown>) {
 
   return {
     ok: true as const,
-    data: { floorNumber, flatNumber, vehicleOwnerType, ownerName, ownerMobile },
+    data: {
+      floorNumber: floorNumber || 1,
+      flatNumber,
+      flatId,
+      vehicleOwnerType,
+      ownerName,
+      ownerMobile,
+    },
   };
 }
 

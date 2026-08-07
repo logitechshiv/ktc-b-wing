@@ -177,6 +177,42 @@ export async function POST(request: Request) {
     }
 
     const payloads = validated.data;
+    const first = payloads[0];
+
+    // Flats are the single source of truth for contact details
+    const flat = first.flatId
+      ? await Flat.findById(first.flatId).lean()
+      : await Flat.findOne({ flatNumber: first.flatNumber }).lean();
+
+    if (!flat) {
+      return NextResponse.json(
+        { success: false, message: "Selected flat was not found" },
+        { status: 400 }
+      );
+    }
+
+    const flatOwnerName = String(flat.ownerName || "").trim();
+    if (!flatOwnerName) {
+      return NextResponse.json(
+        { success: false, message: "કોઈ માલિક નથી — cannot add a vehicle to this flat" },
+        { status: 400 }
+      );
+    }
+
+    const wantsRenter = first.vehicleOwnerType === "renter";
+    const flatRenterName = String(flat.renterName || "").trim();
+    if (wantsRenter && !flatRenterName && !String(flat.renterMobile || "").trim()) {
+      return NextResponse.json(
+        { success: false, message: "No renter is available for this flat" },
+        { status: 400 }
+      );
+    }
+
+    const contactName = wantsRenter ? flatRenterName : flatOwnerName;
+    const contactMobile = wantsRenter
+      ? String(flat.renterMobile || "").trim()
+      : String(flat.ownerMobile || "").trim();
+
     const numbers = payloads.map((p) => p.vehicleNumber).filter(Boolean);
     if (numbers.length > 0) {
       const existing = await Vehicle.find({ vehicleNumber: { $in: numbers } }).select("vehicleNumber");
@@ -191,11 +227,12 @@ export async function POST(request: Request) {
 
     const created = await Vehicle.insertMany(
       payloads.map((p) => ({
-        floorNumber: p.floorNumber,
-        flatNumber: p.flatNumber,
-        vehicleOwnerType: p.vehicleOwnerType === "renter" ? "renter" : "owner",
-        ownerName: p.ownerName,
-        ownerMobile: p.ownerMobile,
+        floorNumber: flat.floorNumber,
+        flatNumber: String(flat.flatNumber),
+        flatId: flat._id,
+        vehicleOwnerType: wantsRenter ? "renter" : "owner",
+        ownerName: contactName,
+        ownerMobile: contactMobile,
         vehicleType: p.vehicleType,
         vehicleNumber: p.vehicleNumber,
         stickerIssued: p.stickerIssued,

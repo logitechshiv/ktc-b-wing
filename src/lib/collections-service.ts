@@ -148,13 +148,10 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
   const paid: PurposeDetailsResult["paid"] = [];
   const pending: PurposeDetailsResult["pending"] = [];
   let totalCollected = 0;
-  let soldFlats = 0;
-  let paidSoldFlats = 0;
-  let unpaidSoldWithOwner = 0;
   const amountPerFlat = purposeAmountPerFlat(purpose as { amountPerFlat?: number; amount?: number });
 
-  for (const amount of paidByFlat.values()) {
-    totalCollected += Number(amount.amount) || 0;
+  for (const pay of paidByFlat.values()) {
+    totalCollected += Number(pay.amount) || 0;
   }
 
   for (const flat of allFlats) {
@@ -163,10 +160,8 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
     const ownerName = (flat.ownerName || "").trim();
     const ownerMobile = flat.ownerMobile || "";
     const hasOwner = !!ownerName;
-    // Sold + On Rent count as sold for society dues
+    // Sold + On Rent — eligible to appear in collectable pending list
     const isSold = flat.status === "sold" || flat.status === "rent";
-
-    if (isSold) soldFlats += 1;
 
     if (payment) {
       const serialized = serializePayment(payment as never);
@@ -183,14 +178,12 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
         paymentId: serialized.id,
         whatsappSent: serialized.whatsappSent,
       });
-      if (isSold) paidSoldFlats += 1;
       continue;
     }
 
-    // Pending list + pending amount: Sold (with owner) and unpaid only
+    // Pending list only: Sold/Rent with owner and unpaid (collectable)
     if (!isSold || !hasOwner) continue;
 
-    unpaidSoldWithOwner += 1;
     pending.push({
       flatId: flat._id.toString(),
       flatNumber,
@@ -203,20 +196,25 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
   }
 
   const totalFlats = allFlats.length;
-  // Pending count = Total flats − Paid sold flats (includes available / unpaid)
-  const pendingFlats = Math.max(0, totalFlats - paidSoldFlats);
+  const paidFlats = paid.length;
+  const pendingFlats = Math.max(0, totalFlats - paidFlats);
+  // Target includes Sold + Unsold (entire society)
+  const totalCollectionTarget = totalFlats * amountPerFlat;
+  const totalPending = Math.max(0, totalCollectionTarget - totalCollected);
   const collectionPercent =
-    soldFlats > 0 ? Math.round((paidSoldFlats / soldFlats) * 100) : 0;
+    totalCollectionTarget > 0
+      ? Math.round((totalCollected / totalCollectionTarget) * 100)
+      : 0;
 
   return {
     purpose: serializePurpose(purpose as never),
     summary: {
       totalFlats,
-      paidFlats: paidSoldFlats,
+      paidFlats,
       pendingFlats,
       noOwnerFlats: 0,
       totalCollected,
-      totalPending: unpaidSoldWithOwner * amountPerFlat,
+      totalPending,
       collectionPercent,
     },
     paid,

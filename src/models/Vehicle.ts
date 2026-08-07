@@ -21,6 +21,13 @@ const VehicleSchema = new Schema(
       trim: true,
       index: true,
     },
+    /** Linked flat from flats collection (source of truth for contact) */
+    flatId: {
+      type: Schema.Types.ObjectId,
+      ref: "Flat",
+      default: null,
+      index: true,
+    },
     /** Whether this vehicle belongs to the flat owner or renter */
     vehicleOwnerType: {
       type: String,
