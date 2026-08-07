@@ -73,17 +73,18 @@ export default function FlatsPage() {
       .catch(() => setUser(null));
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const data = await readFlats({ q, status });
       setFloors(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load flats");
-      setFloors([]);
+      if (!silent) setFloors([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [q, status]);
 
@@ -97,6 +98,52 @@ export default function FlatsPage() {
   function flashSuccess(msg: string) {
     setSuccess(msg);
     window.setTimeout(() => setSuccess(null), 2500);
+  }
+
+  /** Update one flat in place — no list remount / no scroll jump. */
+  function patchFlatInPlace(updated: FlatRecord) {
+    setFloors((prev) =>
+      prev.map((floor) => {
+        if (floor.floorNumber !== updated.floorNumber) return floor;
+        const flats = floor.flats.map((f) => (f.id === updated.id ? { ...f, ...updated } : f));
+        let sold = 0;
+        let rent = 0;
+        let available = 0;
+        for (const f of flats) {
+          if (f.status === "sold") sold += 1;
+          else if (f.status === "rent") rent += 1;
+          else available += 1;
+        }
+        return {
+          ...floor,
+          flats,
+          sold,
+          rent,
+          available,
+          total: flats.length,
+        };
+      })
+    );
+  }
+
+  /** Keep scroll where it was; ensure the edited flat stays visible. */
+  function restoreScrollAfterEdit(flatId: string, scrollY: number) {
+    const apply = () => {
+      window.scrollTo({ top: scrollY });
+      const el = document.getElementById(`flat-card-${flatId}`);
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const margin = 72;
+      const fullyVisible = rect.top >= margin && rect.bottom <= window.innerHeight - 16;
+      if (!fullyVisible) {
+        el.scrollIntoView({ block: "nearest", behavior: "auto" });
+      }
+    };
+    requestAnimationFrame(() => {
+      requestAnimationFrame(apply);
+    });
+    window.setTimeout(apply, 0);
+    window.setTimeout(apply, 40);
   }
 
   async function copyPhone(key: string, phone: string) {
@@ -132,21 +179,35 @@ export default function FlatsPage() {
         if (!editing?.id) {
           throw new Error("Missing flat id — cannot update");
         }
-        await updateFlat(editing.id, {
+        const editedId = editing.id;
+        const scrollY = window.scrollY;
+        const updated = await updateFlat(editedId, {
           ...data,
           // Identity locked to the open card — never change floor/flat on edit
           floorNumber: editing.floorNumber,
           flatNumber: editing.flatNumber,
         });
+        setModalOpen(false);
+        setEditing(null);
+        patchFlatInPlace(updated);
         flashSuccess("Plot details updated");
+        restoreScrollAfterEdit(editedId, scrollY);
+        notifyDataChanged("flat");
       } else {
+        const flatNo = String(data.flatNumber ?? "").trim();
+        const duplicate = floors.some((floor) =>
+          floor.flats.some((f) => f.flatNumber === flatNo)
+        );
+        if (duplicate) {
+          throw new Error("Flat No. already exists.");
+        }
         await createFlat(data);
         flashSuccess("Plot details saved");
+        setModalOpen(false);
+        setEditing(null);
+        await load();
+        notifyDataChanged("flat");
       }
-      setModalOpen(false);
-      setEditing(null);
-      await load();
-      notifyDataChanged("flat");
     } catch (err) {
       setModalError(err instanceof Error ? err.message : "Unable to save");
     } finally {
@@ -257,7 +318,7 @@ export default function FlatsPage() {
                 const showRenter = onRent || hasRenter;
 
                 return (
-                  <li key={f.id} className="px-3 py-3 sm:px-4">
+                  <li id={`flat-card-${f.id}`} key={f.id} className="px-3 py-3 sm:px-4">
                     <div className="flex items-start gap-2.5">
                       <span
                         className={

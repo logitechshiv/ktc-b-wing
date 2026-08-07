@@ -112,6 +112,7 @@ export interface PurposeDetailsResult {
     paymentDate: Date | string;
     paymentMode: string;
     paymentId: string;
+    paymentSource: "owner" | "builder";
     whatsappSent: boolean;
   }>;
   pending: Array<{
@@ -121,6 +122,15 @@ export interface PurposeDetailsResult {
     ownerName: string;
     ownerMobile: string;
     hasOwner: boolean;
+    pendingAmount: number;
+    /** available = unsold (builder); sold/rent = owner-collectable */
+    flatStatus?: string;
+  }>;
+  /** Unsold flats still unpaid for this purpose (builder collection). */
+  unsoldPending: Array<{
+    flatId: string;
+    flatNumber: string;
+    floorNumber: number;
     pendingAmount: number;
   }>;
 }
@@ -147,6 +157,7 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
 
   const paid: PurposeDetailsResult["paid"] = [];
   const pending: PurposeDetailsResult["pending"] = [];
+  const unsoldPending: PurposeDetailsResult["unsoldPending"] = [];
   let totalCollected = 0;
   const amountPerFlat = purposeAmountPerFlat(purpose as { amountPerFlat?: number; amount?: number });
 
@@ -160,28 +171,60 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
     const ownerName = (flat.ownerName || "").trim();
     const ownerMobile = flat.ownerMobile || "";
     const hasOwner = !!ownerName;
-    // Sold + On Rent — eligible to appear in collectable pending list
+    // Sold + On Rent — owner-collectable
     const isSold = flat.status === "sold" || flat.status === "rent";
+    const isUnsold = flat.status === "available";
 
     if (payment) {
       const serialized = serializePayment(payment as never);
+      const rawSource = String(
+        (payment as { paymentSource?: string | null }).paymentSource || ""
+      ).toLowerCase();
+      // Unsold flat payments are Builder-sourced (including legacy rows without paymentSource)
+      const isBuilder = rawSource === "builder" || (isUnsold && rawSource !== "owner");
+      const displayName = isBuilder
+        ? "Builder"
+        : (serialized.ownerName || ownerName).trim() || ownerName;
       paid.push({
         flatId: flat._id.toString(),
         flatNumber,
         floorNumber: flat.floorNumber,
-        ownerName: (serialized.ownerName || ownerName).trim() || ownerName,
+        ownerName: isBuilder
+          ? String(serialized.ownerName || "").trim() || "Builder"
+          : displayName,
         ownerMobile,
-        hasOwner: !!(serialized.ownerName || ownerName).trim(),
+        hasOwner: isBuilder || !!displayName,
         amount: serialized.amount,
         paymentDate: serialized.paymentDate,
         paymentMode: serialized.paymentMode,
         paymentId: serialized.id,
+        paymentSource: isBuilder ? "builder" : "owner",
         whatsappSent: serialized.whatsappSent,
       });
       continue;
     }
 
-    // Pending list only: Sold/Rent with owner and unpaid (collectable)
+    if (isUnsold) {
+      unsoldPending.push({
+        flatId: flat._id.toString(),
+        flatNumber,
+        floorNumber: flat.floorNumber,
+        pendingAmount: amountPerFlat,
+      });
+      pending.push({
+        flatId: flat._id.toString(),
+        flatNumber,
+        floorNumber: flat.floorNumber,
+        ownerName: "",
+        ownerMobile: "",
+        hasOwner: false,
+        pendingAmount: amountPerFlat,
+        flatStatus: "available",
+      });
+      continue;
+    }
+
+    // Pending list: Sold/Rent with owner and unpaid (collectable by owner)
     if (!isSold || !hasOwner) continue;
 
     pending.push({
@@ -192,6 +235,7 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
       ownerMobile,
       hasOwner: true,
       pendingAmount: amountPerFlat,
+      flatStatus: flat.status,
     });
   }
 
@@ -219,6 +263,7 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
     },
     paid,
     pending,
+    unsoldPending,
   };
 }
 
@@ -367,4 +412,208 @@ export async function hasExistingPayment(purposeId: string, flatNumber: string):
     flatNumber: String(flatNumber).trim(),
   });
   return count > 0;
+}
+
+export interface BuilderPaymentInput {
+  paymentPurposeId: string;
+  builderName: string;
+  amount: number;
+  paymentMode: DbPaymentMode;
+  paymentDate: Date;
+  notes?: string;
+  createdBy?: string | null;
+}
+
+export interface BuilderPaymentResult {
+  builderPaymentId: string;
+  flatCount: number;
+  amountPerFlat: number;
+  totalAmount: number;
+  paymentsCreated: number;
+  flatNumbers: string[];
+}
+
+/**
+ * Record one builder batch payment and distribute per-flat paid rows
+ * across every unpaid Unsold (available) flat for the purpose.
+ * Uses a MongoDB transaction when supported; falls back to ordered inserts.
+ */
+export async function createBuilderPaymentDistribution(
+  input: BuilderPaymentInput
+): Promise<
+  | { ok: true; data: BuilderPaymentResult }
+  | { ok: false; message: string; status: number }
+> {
+  const purposeId = String(input.paymentPurposeId || "").trim();
+  const builderName = String(input.builderName || "").trim();
+  const amount = Number(input.amount);
+  const paymentMode = input.paymentMode;
+  const paymentDate = input.paymentDate;
+  const notes = String(input.notes || "").trim();
+
+  if (!mongoose.Types.ObjectId.isValid(purposeId)) {
+    return { ok: false, message: "Invalid purpose id", status: 400 };
+  }
+  if (!builderName) {
+    return { ok: false, message: "Builder Name is required", status: 400 };
+  }
+  if (!PAYMENT_MODES.includes(paymentMode)) {
+    return { ok: false, message: "Payment Mode must be cash, bank or upi", status: 400 };
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, message: "Amount must be greater than 0", status: 400 };
+  }
+  if (Number.isNaN(paymentDate.getTime())) {
+    return { ok: false, message: "Payment Date is invalid", status: 400 };
+  }
+
+  const purpose = await PaymentPurpose.findById(purposeId);
+  if (!purpose) {
+    return { ok: false, message: "Purpose not found", status: 404 };
+  }
+
+  const amountPerFlat = purposeAmountPerFlat(
+    purpose as { amountPerFlat?: number; amount?: number }
+  );
+  if (amountPerFlat <= 0) {
+    return { ok: false, message: "Purpose amount per flat is invalid", status: 400 };
+  }
+
+  const BuilderPayment = (await import("@/models/BuilderPayment")).default;
+
+  const [unsoldFlats, existingPayments, existingBuilderBatch, existingBuilderPayCount] =
+    await Promise.all([
+      Flat.find({ status: "available" }).sort({ floorNumber: 1, flatNumber: 1 }).lean(),
+      Payment.find({ paymentPurposeId: purpose._id }).select("flatNumber").lean(),
+      BuilderPayment.findOne({ paymentPurposeId: purpose._id }).select("_id").lean(),
+      Payment.countDocuments({ paymentPurposeId: purpose._id, paymentSource: "builder" }),
+    ]);
+
+  if (existingBuilderBatch || existingBuilderPayCount > 0) {
+    return {
+      ok: false,
+      message: "Builder payment already exists for this purpose.",
+      status: 409,
+    };
+  }
+
+  const paidSet = new Set(existingPayments.map((p) => String(p.flatNumber)));
+  const unpaidUnsold = unsoldFlats.filter((f) => !paidSet.has(String(f.flatNumber)));
+
+  if (unpaidUnsold.length === 0) {
+    return {
+      ok: false,
+      message: "No unpaid unsold flats found for this purpose.",
+      status: 409,
+    };
+  }
+
+  const expectedTotal = unpaidUnsold.length * amountPerFlat;
+  if (Math.round(amount) !== Math.round(expectedTotal)) {
+    return {
+      ok: false,
+      message: `Amount must equal ${expectedTotal} (${unpaidUnsold.length} unsold flats × ${amountPerFlat})`,
+      status: 400,
+    };
+  }
+
+  const flatNumbers = unpaidUnsold.map((f) => String(f.flatNumber));
+  const createdBy =
+    input.createdBy && mongoose.Types.ObjectId.isValid(input.createdBy)
+      ? new mongoose.Types.ObjectId(input.createdBy)
+      : null;
+
+  const paymentDocs = unpaidUnsold.map((flat) => ({
+    flatId: flat._id,
+    floorNumber: flat.floorNumber,
+    flatNumber: String(flat.flatNumber),
+    ownerName: builderName,
+    paymentPurposeId: purpose._id,
+    paymentPurpose: purpose.title,
+    amount: amountPerFlat,
+    paymentMode,
+    paymentDate,
+    paymentSource: "builder" as const,
+    whatsappSent: false,
+    notes,
+    createdBy,
+  }));
+
+  const builderDoc = {
+    paymentPurposeId: purpose._id,
+    paymentPurpose: purpose.title,
+    builderName,
+    amount: expectedTotal,
+    amountPerFlat,
+    flatCount: unpaidUnsold.length,
+    flatNumbers,
+    paymentMode,
+    paymentDate,
+    notes,
+    createdBy,
+  };
+
+  async function runInTransaction() {
+    const session = await mongoose.startSession();
+    try {
+      let builderPaymentId = "";
+      await session.withTransaction(async () => {
+        const [createdBatch] = await BuilderPayment.create([builderDoc], { session });
+        builderPaymentId = createdBatch._id.toString();
+        await Payment.insertMany(paymentDocs, { session, ordered: true });
+      });
+      return builderPaymentId;
+    } finally {
+      session.endSession();
+    }
+  }
+
+  async function runWithoutTransaction() {
+    const createdBatch = await BuilderPayment.create(builderDoc);
+    try {
+      await Payment.insertMany(paymentDocs, { ordered: true });
+    } catch (err) {
+      // Roll back batch record if per-flat inserts fail (e.g. duplicate)
+      await BuilderPayment.findByIdAndDelete(createdBatch._id).catch(() => undefined);
+      throw err;
+    }
+    return createdBatch._id.toString();
+  }
+
+  try {
+    let builderPaymentId: string;
+    try {
+      builderPaymentId = await runInTransaction();
+    } catch (txErr: unknown) {
+      const msg = txErr instanceof Error ? txErr.message : String(txErr);
+      // Standalone MongoDB / no replica set — fall back
+      if (/transaction|replica set|not supported/i.test(msg)) {
+        builderPaymentId = await runWithoutTransaction();
+      } else {
+        throw txErr;
+      }
+    }
+
+    return {
+      ok: true,
+      data: {
+        builderPaymentId,
+        flatCount: unpaidUnsold.length,
+        amountPerFlat,
+        totalAmount: expectedTotal,
+        paymentsCreated: unpaidUnsold.length,
+        flatNumbers,
+      },
+    };
+  } catch (err: unknown) {
+    const code = err && typeof err === "object" && "code" in err ? Number((err as { code: number }).code) : 0;
+    if (code === 11000) {
+      return {
+        ok: false,
+        message: "Builder payment already exists for this purpose.",
+        status: 409,
+      };
+    }
+    throw err;
+  }
 }

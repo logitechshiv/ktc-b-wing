@@ -3,6 +3,9 @@ import mongoose, { Schema, models, model, type InferSchemaType, type Model } fro
 export const PAYMENT_MODES = ["cash", "bank", "upi"] as const;
 export type DbPaymentMode = (typeof PAYMENT_MODES)[number];
 
+export const PAYMENT_SOURCES = ["owner", "builder"] as const;
+export type PaymentSource = (typeof PAYMENT_SOURCES)[number];
+
 const PaymentSchema = new Schema(
   {
     flatId: {
@@ -29,6 +32,13 @@ const PaymentSchema = new Schema(
       default: "",
       trim: true,
       index: true,
+    },
+    /** Who paid for a sold flat — Owner or Renter */
+    ownerType: {
+      type: String,
+      enum: ["Owner", "Renter", ""],
+      default: "",
+      trim: true,
     },
     paymentPurposeId: {
       type: Schema.Types.ObjectId,
@@ -57,6 +67,13 @@ const PaymentSchema = new Schema(
       required: true,
       index: true,
     },
+    /** owner = sold flat payment; builder = unsold flat payment */
+    paymentSource: {
+      type: String,
+      enum: PAYMENT_SOURCES,
+      default: "owner",
+      index: true,
+    },
     whatsappSent: {
       type: Boolean,
       default: false,
@@ -78,7 +95,8 @@ const PaymentSchema = new Schema(
   }
 );
 
-PaymentSchema.index({ paymentPurposeId: 1, flatNumber: 1 });
+/** One payment per flat per purpose — prevents duplicate owner/builder entries. */
+PaymentSchema.index({ paymentPurposeId: 1, flatNumber: 1 }, { unique: true });
 
 export type PaymentDocument = InferSchemaType<typeof PaymentSchema> & {
   _id: mongoose.Types.ObjectId;

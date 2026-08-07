@@ -1,9 +1,12 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import { inr } from "@/lib/format";
-import type { PurposePendingFlat, PurposeRecord } from "@/lib/payment-purposes-api";
-import type { PaymentMode } from "@/lib/payments-api";
+import type { PurposeRecord, PurposeUnsoldPendingFlat } from "@/lib/payment-purposes-api";
+import type { CollectPersonOption, PaymentMode } from "@/lib/payments-api";
 import { formSelect } from "@/lib/form-styles";
+
+export type CollectionFlatTab = "sold" | "unsold";
 
 interface Props {
   open: boolean;
@@ -12,25 +15,30 @@ interface Props {
   formPurposeId: string;
   formPurposeLocked: boolean;
   formPurposeSearch: string;
-  formPendingFlats: PurposePendingFlat[];
+  collectOptions: CollectPersonOption[];
   formPendingLoading: boolean;
   formAllPaid: boolean;
-  formFlatId: string;
+  formSelectedKeys: string[];
   formAmount: number;
   formDate: string;
   formNotes: string;
   formMode: PaymentMode;
   formSaving: boolean;
+  formTab: CollectionFlatTab;
+  formBuilderName: string;
+  formUnsoldPending: PurposeUnsoldPendingFlat[];
+  formUnsoldAllPaid: boolean;
   error?: string | null;
-  displayOwnerName: (ownerName?: string | null) => string;
   onClose: () => void;
   onPurposeSearchChange: (value: string) => void;
   onPurposeChange: (purposeId: string) => void;
-  onFlatChange: (flatId: string) => void;
+  onSelectedKeysChange: (keys: string[]) => void;
   onAmountChange: (amount: number) => void;
   onDateChange: (date: string) => void;
   onNotesChange: (notes: string) => void;
   onModeChange: (mode: PaymentMode) => void;
+  onTabChange: (tab: CollectionFlatTab) => void;
+  onBuilderNameChange: (name: string) => void;
   onSave: () => void;
 }
 
@@ -41,32 +49,101 @@ export default function CollectionModal({
   formPurposeId,
   formPurposeLocked,
   formPurposeSearch,
-  formPendingFlats,
+  collectOptions,
   formPendingLoading,
   formAllPaid,
-  formFlatId,
+  formSelectedKeys,
   formAmount,
   formDate,
   formNotes,
   formMode,
   formSaving,
+  formTab,
+  formBuilderName,
+  formUnsoldPending,
+  formUnsoldAllPaid,
   error,
-  displayOwnerName,
   onClose,
   onPurposeSearchChange,
   onPurposeChange,
-  onFlatChange,
+  onSelectedKeysChange,
   onAmountChange,
   onDateChange,
   onNotesChange,
   onModeChange,
+  onTabChange,
+  onBuilderNameChange,
   onSave,
 }: Props) {
-  if (!open) return null;
+  const [personSearch, setPersonSearch] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setPersonSearch("");
+      setDropdownOpen(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!dropdownRef.current) return;
+      if (!dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
   const purposeOptions = formPurposeLocked
     ? purposes.filter((p) => p.id === formPurposeId)
     : searchablePurposes;
+
+  const isSold = formTab === "sold";
+  const soldBlocked = !formPurposeId || formAllPaid || formPendingLoading;
+  const unsoldBlocked = !formPurposeId || formUnsoldAllPaid || formPendingLoading;
+  const canSaveSold =
+    !formSaving && !!formPurposeId && !formAllPaid && formSelectedKeys.length > 0 && formAmount > 0;
+  const canSaveUnsold =
+    !formSaving &&
+    !!formPurposeId &&
+    !formUnsoldAllPaid &&
+    !!formBuilderName.trim() &&
+    formAmount > 0 &&
+    formUnsoldPending.length > 0;
+
+  const selectedOptions = useMemo(() => {
+    const map = new Map(collectOptions.map((o) => [o.key, o]));
+    return formSelectedKeys.map((k) => map.get(k)).filter(Boolean) as CollectPersonOption[];
+  }, [collectOptions, formSelectedKeys]);
+
+  const filteredOptions = useMemo(() => {
+    const q = personSearch.trim().toLowerCase();
+    if (!q) return collectOptions;
+    return collectOptions.filter(
+      (o) =>
+        o.label.toLowerCase().includes(q) ||
+        o.flatNumber.toLowerCase().includes(q) ||
+        o.name.toLowerCase().includes(q) ||
+        o.ownerType.toLowerCase().includes(q)
+    );
+  }, [collectOptions, personSearch]);
+
+  function toggleKey(key: string) {
+    if (formSelectedKeys.includes(key)) {
+      onSelectedKeysChange(formSelectedKeys.filter((k) => k !== key));
+    } else {
+      onSelectedKeysChange([...formSelectedKeys, key]);
+    }
+  }
+
+  function removeKey(key: string) {
+    onSelectedKeysChange(formSelectedKeys.filter((k) => k !== key));
+  }
+
+  if (!open) return null;
 
   return (
     <div
@@ -88,6 +165,33 @@ export default function CollectionModal({
           >
             Close
           </button>
+        </div>
+
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          {(
+            [
+              { id: "sold" as const, label: "Sold Flats" },
+              { id: "unsold" as const, label: "Unsold Flats (Builder)" },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              disabled={formSaving}
+              onClick={() => onTabChange(tab.id)}
+              className={
+                "rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition " +
+                (formTab === tab.id
+                  ? "border-brand bg-brand/5 text-brand"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50")
+              }
+            >
+              <span className="mr-1.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-current text-[9px]">
+                {formTab === tab.id ? "●" : "○"}
+              </span>
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         <div className="space-y-3">
@@ -126,81 +230,231 @@ export default function CollectionModal({
             )}
           </label>
 
-          <label className="block text-xs font-semibold text-slate-600">
-            Flat / Owner (pending with owner)
-            <select
-              value={formFlatId}
-              onChange={(e) => onFlatChange(e.target.value)}
-              disabled={!formPurposeId || formAllPaid || formPendingLoading}
-              className={
-                formSelect +
-                " disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 dark:disabled:bg-slate-900"
-              }
-            >
-              {!formPurposeId && <option value="">Select a purpose first…</option>}
-              {formPurposeId && formPendingLoading && (
-                <option value="">Loading pending flats…</option>
+          {isSold ? (
+            <>
+              <div className="block text-xs font-semibold text-slate-600">
+                Flat / Owner / Renter
+                <div ref={dropdownRef} className="relative mt-1">
+                  <button
+                    type="button"
+                    disabled={soldBlocked}
+                    onClick={() => setDropdownOpen((v) => !v)}
+                    className={
+                      "flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm outline-none focus:border-brand disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 " +
+                      (dropdownOpen ? "border-brand" : "")
+                    }
+                  >
+                    <span className="truncate text-slate-600">
+                      {!formPurposeId
+                        ? "Select a purpose first…"
+                        : formPendingLoading
+                          ? "Loading…"
+                          : formSelectedKeys.length > 0
+                            ? `${formSelectedKeys.length} selected`
+                            : "Search & select Owner/Renter…"}
+                    </span>
+                    <span className="text-slate-400" aria-hidden>
+                      ▾
+                    </span>
+                  </button>
+
+                  {dropdownOpen && !soldBlocked && (
+                    <div className="absolute z-20 mt-1 max-h-64 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                      <div className="border-b border-slate-100 p-2">
+                        <input
+                          value={personSearch}
+                          onChange={(e) => setPersonSearch(e.target.value)}
+                          placeholder="Search flat, name…"
+                          className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm outline-none focus:border-brand"
+                          autoFocus
+                        />
+                      </div>
+                      <ul className="max-h-48 overflow-y-auto py-1">
+                        {filteredOptions.map((opt) => {
+                          const checked = formSelectedKeys.includes(opt.key);
+                          return (
+                            <li key={opt.key}>
+                              <label className="flex cursor-pointer items-start gap-2.5 px-3 py-2 text-sm hover:bg-brand/5">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleKey(opt.key)}
+                                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+                                />
+                                <span className="min-w-0 leading-snug text-navy">{opt.label}</span>
+                              </label>
+                            </li>
+                          );
+                        })}
+                        {filteredOptions.length === 0 && (
+                          <li className="px-3 py-4 text-center text-sm text-slate-400">
+                            No matching Owner/Renter
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                {selectedOptions.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selectedOptions.map((opt) => (
+                      <span
+                        key={opt.key}
+                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-brand/20 bg-brand/5 px-2.5 py-1 text-[11px] font-medium text-brand"
+                      >
+                        <span className="truncate">{opt.label}</span>
+                        <button
+                          type="button"
+                          disabled={formSaving}
+                          onClick={() => removeKey(opt.key)}
+                          className="shrink-0 text-brand/70 hover:text-brand"
+                          aria-label={`Remove ${opt.label}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {formPurposeId && formAllPaid && (
+                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  No pending sold flats with owners for this purpose.
+                </p>
               )}
-              {formPurposeId &&
-                !formPendingLoading &&
-                formPendingFlats.length === 0 &&
-                !formAllPaid && <option value="">No pending flats</option>}
-              {formPurposeId &&
-                !formPendingLoading &&
-                formPendingFlats.map((f) => (
-                  <option key={f.flatId} value={f.flatId}>
-                    {f.flatNumber} — {displayOwnerName(f.ownerName)}
-                  </option>
-                ))}
-            </select>
-          </label>
 
-          {formPurposeId && formAllPaid && (
-            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              No pending flats with owners for this purpose.
-            </p>
+              <label className="block text-xs font-semibold text-slate-600">
+                Amount (Per Flat)
+                <input
+                  type="number"
+                  value={formAmount}
+                  onChange={(e) => onAmountChange(Number(e.target.value))}
+                  disabled={soldBlocked}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
+                />
+              </label>
+              <div>
+                <div className="mb-1.5 text-xs font-semibold text-slate-600">Payment Method</div>
+                <div className="flex gap-2">
+                  {(["cash", "bank", "upi"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      disabled={soldBlocked}
+                      onClick={() => onModeChange(m)}
+                      className={
+                        "flex-1 rounded-xl border px-3 py-2 text-sm capitalize disabled:opacity-50 " +
+                        (formMode === m
+                          ? "border-brand bg-brand/5 font-medium text-brand"
+                          : "border-slate-200 text-slate-600")
+                      }
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label className="block text-xs font-semibold text-slate-600">
+                Payment Date
+                <input
+                  type="date"
+                  value={formDate}
+                  onChange={(e) => onDateChange(e.target.value)}
+                  disabled={soldBlocked}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
+                />
+              </label>
+              <label className="block text-xs font-semibold text-slate-600">
+                Notes
+                <input
+                  type="text"
+                  value={formNotes}
+                  onChange={(e) => onNotesChange(e.target.value)}
+                  disabled={soldBlocked}
+                  placeholder="Notes (optional)"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="block text-xs font-semibold text-slate-600">
+                Builder Name
+                <input
+                  type="text"
+                  value={formBuilderName}
+                  onChange={(e) => onBuilderNameChange(e.target.value)}
+                  disabled={formUnsoldAllPaid}
+                  placeholder="Builder / developer name"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
+                />
+              </label>
+
+              <label className="block text-xs font-semibold text-slate-600">
+                Amount
+                <input
+                  type="number"
+                  value={formAmount}
+                  onChange={(e) => onAmountChange(Number(e.target.value))}
+                  disabled={unsoldBlocked}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
+                />
+              </label>
+
+              <div>
+                <div className="mb-1.5 text-xs font-semibold text-slate-600">Payment Method</div>
+                <div className="flex gap-2">
+                  {(["cash", "bank", "upi"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      disabled={unsoldBlocked}
+                      onClick={() => onModeChange(m)}
+                      className={
+                        "flex-1 rounded-xl border px-3 py-2 text-sm capitalize disabled:opacity-50 " +
+                        (formMode === m
+                          ? "border-brand bg-brand/5 font-medium text-brand"
+                          : "border-slate-200 text-slate-600")
+                      }
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label className="block text-xs font-semibold text-slate-600">
+                Payment Date
+                <input
+                  type="date"
+                  value={formDate}
+                  onChange={(e) => onDateChange(e.target.value)}
+                  disabled={unsoldBlocked}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
+                />
+              </label>
+
+              <label className="block text-xs font-semibold text-slate-600">
+                Notes
+                <input
+                  type="text"
+                  value={formNotes}
+                  onChange={(e) => onNotesChange(e.target.value)}
+                  disabled={unsoldBlocked}
+                  placeholder="Notes (optional)"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
+                />
+              </label>
+
+              {formPurposeId && formUnsoldAllPaid && (
+                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  All unsold flats are already paid for this purpose.
+                </p>
+              )}
+            </>
           )}
-
-          <input
-            type="number"
-            value={formAmount}
-            onChange={(e) => onAmountChange(Number(e.target.value))}
-            disabled={!formPurposeId || formAllPaid}
-            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
-          />
-          <input
-            type="date"
-            value={formDate}
-            onChange={(e) => onDateChange(e.target.value)}
-            disabled={!formPurposeId || formAllPaid}
-            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
-          />
-          <input
-            type="text"
-            value={formNotes}
-            onChange={(e) => onNotesChange(e.target.value)}
-            disabled={!formPurposeId || formAllPaid}
-            placeholder="Notes (optional)"
-            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
-          />
-          <div className="flex gap-2">
-            {(["cash", "bank", "upi"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                disabled={!formPurposeId || formAllPaid}
-                onClick={() => onModeChange(m)}
-                className={
-                  "flex-1 rounded-xl border px-3 py-2 text-sm capitalize disabled:opacity-50 " +
-                  (formMode === m
-                    ? "border-brand bg-brand/5 font-medium text-brand"
-                    : "border-slate-200 text-slate-600")
-                }
-              >
-                {m}
-              </button>
-            ))}
-          </div>
 
           {error && (
             <p
@@ -214,10 +468,10 @@ export default function CollectionModal({
           <button
             type="button"
             onClick={onSave}
-            disabled={formSaving || !formPurposeId || formAllPaid || !formFlatId}
+            disabled={isSold ? !canSaveSold : !canSaveUnsold}
             className="w-full rounded-xl bg-navy py-2.5 text-sm font-medium text-white disabled:opacity-70"
           >
-            {formSaving ? "Saving…" : "Save collection"}
+            {formSaving ? "Saving…" : isSold ? "Save collection" : "Save builder payment"}
           </button>
         </div>
       </div>

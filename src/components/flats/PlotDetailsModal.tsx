@@ -85,6 +85,10 @@ export default function PlotDetailsModal({
       setLocalError("Renter Mobile must be exactly 10 digits");
       return;
     }
+    if (mode === "add" && !String(flatNumber).trim()) {
+      setLocalError("Flat Number is required");
+      return;
+    }
 
     const nextOwnerName = ownerName.trim();
     const nextOwnerMobile = ownerMobile.trim();

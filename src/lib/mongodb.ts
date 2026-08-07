@@ -23,10 +23,32 @@ function getMongoUri() {
   return uri;
 }
 
+let indexSync: Promise<void> | null = null;
+
+async function ensureIndexes() {
+  if (!indexSync) {
+    indexSync = (async () => {
+      const Flat = (await import("@/models/Flat")).default;
+      const Payment = (await import("@/models/Payment")).default;
+      const BuilderPayment = (await import("@/models/BuilderPayment")).default;
+      await Promise.all([
+        Flat.syncIndexes(),
+        Payment.syncIndexes(),
+        BuilderPayment.syncIndexes(),
+      ]);
+    })().catch((err) => {
+      indexSync = null;
+      console.warn("Index sync skipped:", err instanceof Error ? err.message : err);
+    });
+  }
+  await indexSync;
+}
+
 async function runSeeds() {
   await ensureSuperAdmin();
   await ensureFlatsSeed();
   await migrateNamesToGujaratiOnly();
+  await ensureIndexes();
 }
 
 /** Reusable MongoDB connection — reuses the cached connection across hot reloads & requests. */

@@ -68,11 +68,13 @@ interface Props {
   error: string | null;
   isSuperAdmin: boolean;
   searchQuery?: string;
-  /** paid | pending — never mix both lists */
-  statusFilter?: "paid" | "pending";
+  /** paid | pending — when omitted / "all", show both lists */
+  statusFilter?: "paid" | "pending" | "all";
   /** all = every mode; cash | bank | upi = paid records only */
   modeFilter?: "all" | "cash" | "bank" | "upi";
-  onClose: () => void;
+  /** When true, title/description are shown by the parent accordion */
+  hideHeader?: boolean;
+  onClose?: () => void;
   onAddCollection?: () => void;
 }
 
@@ -82,17 +84,21 @@ export default function PurposeDetailsPanel({
   error,
   isSuperAdmin,
   searchQuery = "",
-  statusFilter = "paid",
+  statusFilter = "all",
   modeFilter = "all",
+  hideHeader = false,
+  onAddCollection,
 }: Props) {
   const q = searchQuery.trim().toLowerCase();
-  const showPaid = statusFilter === "paid";
-  const showPending = statusFilter === "pending";
+  const showPaid = statusFilter === "paid" || statusFilter === "all";
+  const showPending = statusFilter === "pending" || statusFilter === "all";
 
   const paid = useMemo(() => {
     if (!details) return [];
     return details.paid.filter((row) => {
-      if (!matchesSearch(q, row.flatNumber, row.ownerName)) return false;
+      const isBuilder = row.paymentSource === "builder";
+      const searchName = isBuilder ? `Builder ${row.ownerName || ""}` : row.ownerName;
+      if (!matchesSearch(q, row.flatNumber, searchName)) return false;
       if (modeFilter === "all") return true;
       return String(row.paymentMode || "").toLowerCase() === modeFilter;
     });
@@ -100,30 +106,50 @@ export default function PurposeDetailsPanel({
 
   const pending = useMemo(() => {
     if (!details) return [];
-    return details.pending.filter(
-      (row) =>
-        flatHasOwner(row.ownerName, row.hasOwner) &&
-        row.pendingAmount > 0 &&
-        matchesSearch(q, row.flatNumber, row.ownerName)
-    );
+    return details.pending.filter((row) => {
+      if (row.pendingAmount <= 0) return false;
+      if (!matchesSearch(q, row.flatNumber, row.ownerName || "builder")) return false;
+      // Unsold flats (builder) + sold/rent with owner
+      if (row.flatStatus === "available") return true;
+      return flatHasOwner(row.ownerName, row.hasOwner);
+    });
   }, [details, q]);
 
   if (!details && !loading && !error) return null;
 
   return (
     <div className="space-y-4">
-      {/* Summary card only — history list is rendered separately below */}
-      <section className="space-y-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-bold text-navy">
-            {details?.purpose.title || "Purpose details"}
-          </h2>
-          {!!details?.purpose.description?.trim() && (
-            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
-              {details.purpose.description}
-            </p>
-          )}
-        </div>
+      <section
+        className={
+          hideHeader
+            ? "space-y-4"
+            : "space-y-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
+        }
+      >
+        {!hideHeader && (
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-bold text-navy">
+              {details?.purpose.title || "Purpose details"}
+            </h2>
+            {!!details?.purpose.description?.trim() && (
+              <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
+                {details.purpose.description}
+              </p>
+            )}
+          </div>
+        )}
+
+        {isSuperAdmin && onAddCollection && details && !loading && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onAddCollection}
+              className="text-xs font-semibold text-brand hover:underline"
+            >
+              + Add Collection
+            </button>
+          </div>
+        )}
 
         {loading && <p className="py-6 text-center text-sm text-slate-400">Loading purpose details…</p>}
 
@@ -178,7 +204,6 @@ export default function PurposeDetailsPanel({
         )}
       </section>
 
-      {/* Payment History list — outside the summary card */}
       {details && !loading && showPaid && (
         <section className="space-y-2">
           <div className="flex items-end justify-between gap-2 px-0.5">
@@ -191,7 +216,8 @@ export default function PurposeDetailsPanel({
           </div>
           <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
             {paid.map((row) => {
-              const hasOwner = flatHasOwner(row.ownerName, row.hasOwner);
+              const isBuilder = row.paymentSource === "builder";
+              const payerLabel = isBuilder ? "Builder" : displayOwnerName(row.ownerName);
               return (
                 <li key={`paid-${row.paymentId || row.flatNumber}`} className="px-3 py-3 sm:px-4">
                   <div className="flex items-start gap-2.5">
@@ -206,13 +232,7 @@ export default function PurposeDetailsPanel({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div
-                            className={
-                              "truncate font-bold " + (hasOwner ? "text-navy" : "text-slate-400")
-                            }
-                          >
-                            {displayOwnerName(row.ownerName)}
-                          </div>
+                          <div className="truncate font-bold text-navy">{payerLabel}</div>
                           <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
                             <span className="tabular-nums">{fmtDateDMY(row.paymentDate)}</span>
                             <span className="text-slate-300">·</span>
@@ -229,9 +249,9 @@ export default function PurposeDetailsPanel({
                         <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-600/50 dark:bg-emerald-950 dark:text-emerald-300">
                           🟢 જમા
                         </span>
-                        {!hasOwner && (
-                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                            No Owner
+                        {isBuilder && (
+                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:border-amber-600/50 dark:bg-amber-950 dark:text-amber-300">
+                            Builder
                           </span>
                         )}
                       </div>
@@ -259,7 +279,8 @@ export default function PurposeDetailsPanel({
           </div>
           <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
             {pending.map((row) => {
-              const mobileOk = isValidMobile(row.ownerMobile);
+              const isUnsold = row.flatStatus === "available";
+              const mobileOk = !isUnsold && isValidMobile(row.ownerMobile);
               return (
                 <li key={`pending-${row.flatId || row.flatNumber}`} className="px-3 py-3 sm:px-4">
                   <div className="flex items-start gap-2.5">
@@ -275,7 +296,7 @@ export default function PurposeDetailsPanel({
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="truncate font-bold text-navy">
-                            {displayOwnerName(row.ownerName)}
+                            {isUnsold ? "Builder" : displayOwnerName(row.ownerName)}
                           </div>
                           <div className="mt-0.5 text-[11px] text-slate-400">Flat {row.flatNumber}</div>
                         </div>
@@ -287,7 +308,13 @@ export default function PurposeDetailsPanel({
                         <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-700 dark:border-rose-600/50 dark:bg-rose-950 dark:text-rose-300">
                           🔴 બાકી
                         </span>
+                        {isUnsold && (
+                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
+                            Unsold
+                          </span>
+                        )}
                         {isSuperAdmin &&
+                          !isUnsold &&
                           (mobileOk ? (
                             <a
                               href={reminderHref(details.purpose, row)}

@@ -11,6 +11,7 @@ export interface PaymentRecord {
   amount: number;
   paymentMode: PaymentMode;
   paymentDate: string;
+  paymentSource?: "owner" | "builder";
   whatsappSent: boolean;
   notes: string;
   createdBy?: string | null;
@@ -49,6 +50,7 @@ export interface PaymentInput {
   floorNumber: number;
   flatNumber: string;
   ownerName?: string;
+  ownerType?: "Owner" | "Renter";
   paymentPurposeId: string;
   paymentPurpose?: string;
   amount: number;
@@ -56,6 +58,37 @@ export interface PaymentInput {
   paymentDate?: string;
   whatsappSent?: boolean;
   notes?: string;
+}
+
+export interface CollectPersonOption {
+  key: string;
+  flatId: string;
+  flatNumber: string;
+  floorNumber: number;
+  name: string;
+  ownerType: "Owner" | "Renter";
+  label: string;
+}
+
+export interface BulkPaymentItem {
+  flatId: string;
+  ownerName: string;
+  ownerType: "Owner" | "Renter";
+}
+
+export interface BulkPaymentInput {
+  paymentPurposeId: string;
+  amount: number;
+  paymentMode: PaymentMode;
+  paymentDate?: string;
+  notes?: string;
+  items: BulkPaymentItem[];
+}
+
+export interface BulkPaymentResult {
+  message: string;
+  created: number;
+  skipped: number;
 }
 
 function toPayment(raw: Record<string, unknown>): PaymentRecord {
@@ -70,6 +103,7 @@ function toPayment(raw: Record<string, unknown>): PaymentRecord {
     amount: Number(raw.amount) || 0,
     paymentMode: (raw.paymentMode as PaymentMode) || "cash",
     paymentDate: raw.paymentDate ? String(raw.paymentDate).slice(0, 10) : "",
+    paymentSource: raw.paymentSource === "builder" ? "builder" : "owner",
     whatsappSent: !!raw.whatsappSent,
     notes: String(raw.notes ?? ""),
     createdBy: raw.createdBy ? String(raw.createdBy) : null,
@@ -133,6 +167,76 @@ export async function createPayment(input: PaymentInput): Promise<PaymentRecord>
   });
   const data = await parseJson(res);
   return toPayment(data.payment);
+}
+
+export async function createPaymentsBulk(input: BulkPaymentInput): Promise<BulkPaymentResult> {
+  const res = await fetch("/api/payments/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    cache: "no-store",
+    body: JSON.stringify(input),
+  });
+  const data = await res.json().catch(() => ({}));
+  const created = Number(data.created) || 0;
+  const skipped = Number(data.skipped) || 0;
+  const message = String(data.message || "");
+  if (!res.ok && created === 0) {
+    throw new Error(message || `Request failed (${res.status})`);
+  }
+  return { message, created, skipped };
+}
+
+export interface BuilderPaymentInput {
+  paymentPurposeId: string;
+  builderName: string;
+  amount: number;
+  paymentMode: PaymentMode;
+  paymentDate?: string;
+  notes?: string;
+}
+
+export interface BuilderPaymentResult {
+  message: string;
+  flatCount: number;
+  totalAmount: number;
+  amountPerFlat: number;
+  summary: {
+    totalFlats: number;
+    paidFlats: number;
+    pendingFlats: number;
+    totalCollected: number;
+    totalPending: number;
+    collectionPercent: number;
+  } | null;
+  paid: Array<Record<string, unknown>>;
+  pending: Array<Record<string, unknown>>;
+  unsoldPending: Array<Record<string, unknown>>;
+  purpose: Record<string, unknown> | null;
+}
+
+export async function createBuilderPayment(input: BuilderPaymentInput): Promise<BuilderPaymentResult> {
+  const res = await fetch("/api/payments/builder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    cache: "no-store",
+    body: JSON.stringify(input),
+  });
+  const data = await parseJson(res);
+  const bp = (data.builderPayment as Record<string, unknown>) || {};
+  const summary = (data.summary as BuilderPaymentResult["summary"]) || null;
+  return {
+    message: String(data.message || "Builder payment saved"),
+    flatCount: Number(bp.paymentsCreated ?? bp.flatCount) || 0,
+    totalAmount: Number(bp.totalAmount) || 0,
+    amountPerFlat: Number(bp.amountPerFlat) || 0,
+    summary,
+    paid: (data.paid as Record<string, unknown>[]) || [],
+    pending: (data.pending as Record<string, unknown>[]) || [],
+    unsoldPending: (data.unsoldPending as Record<string, unknown>[]) || [],
+    purpose: (data.purpose as Record<string, unknown>) || null,
+  };
 }
 
 export async function updatePayment(id: string, input: PaymentInput): Promise<PaymentRecord> {

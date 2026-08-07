@@ -38,6 +38,7 @@ export interface PurposePaidFlat {
   paymentDate: string;
   paymentMode: string;
   paymentId: string;
+  paymentSource?: "owner" | "builder";
   whatsappSent: boolean;
 }
 
@@ -48,6 +49,14 @@ export interface PurposePendingFlat {
   ownerName: string;
   ownerMobile: string;
   hasOwner: boolean;
+  pendingAmount: number;
+  flatStatus?: string;
+}
+
+export interface PurposeUnsoldPendingFlat {
+  flatId: string;
+  flatNumber: string;
+  floorNumber: number;
   pendingAmount: number;
 }
 
@@ -66,6 +75,7 @@ export interface PurposeDetails {
   summary: PurposeDetailsSummary;
   paid: PurposePaidFlat[];
   pending: PurposePendingFlat[];
+  unsoldPending: PurposeUnsoldPendingFlat[];
 }
 
 function toPurpose(raw: Record<string, unknown>): PurposeRecord {
@@ -170,6 +180,7 @@ export async function readPurposeDetails(id: string): Promise<PurposeDetails> {
       paymentDate: row.paymentDate ? String(row.paymentDate).slice(0, 10) : "",
       paymentMode: String(row.paymentMode ?? ""),
       paymentId: String(row.paymentId ?? ""),
+      paymentSource: row.paymentSource === "builder" ? ("builder" as const) : ("owner" as const),
       whatsappSent: !!row.whatsappSent,
     };
   });
@@ -186,8 +197,16 @@ export async function readPurposeDetails(id: string): Promise<PurposeDetails> {
       ownerMobile: String(row.ownerMobile ?? ""),
       hasOwner,
       pendingAmount: Number(row.pendingAmount) || 0,
+      flatStatus: row.flatStatus ? String(row.flatStatus) : undefined,
     };
   });
+
+  const unsoldPending = ((data.unsoldPending as Record<string, unknown>[]) || []).map((row) => ({
+    flatId: String(row.flatId ?? ""),
+    flatNumber: String(row.flatNumber ?? ""),
+    floorNumber: Number(row.floorNumber) || 0,
+    pendingAmount: Number(row.pendingAmount) || 0,
+  }));
 
   const summary = (data.summary as PurposeDetailsSummary) || {
     totalFlats: 0,
@@ -204,5 +223,6 @@ export async function readPurposeDetails(id: string): Promise<PurposeDetails> {
     summary,
     paid,
     pending,
+    unsoldPending,
   };
 }

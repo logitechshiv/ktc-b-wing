@@ -59,6 +59,7 @@ const FlatSchema = new Schema(
   }
 );
 
+/** Compound index for floor grouping queries (flatNumber already unique alone). */
 FlatSchema.index({ floorNumber: 1, flatNumber: 1 });
 
 export type FlatDocument = InferSchemaType<typeof FlatSchema> & {

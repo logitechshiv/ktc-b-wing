@@ -83,7 +83,7 @@ export async function readFlat(id: string): Promise<FlatRecord> {
   return toFlat(data.flat);
 }
 
-/** POST /api/flats (upsert) — requires Super Admin cookie */
+/** POST /api/flats — create only (rejects duplicate flat numbers) — requires Super Admin cookie */
 export async function createFlat(input: FlatInput): Promise<FlatRecord> {
   const res = await fetch("/api/flats", {
     method: "POST",

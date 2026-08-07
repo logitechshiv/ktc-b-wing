@@ -39,6 +39,7 @@ export async function GET(_request: Request, context: RouteContext) {
       summary: details.summary,
       paid: details.paid,
       pending: details.pending,
+      unsoldPending: details.unsoldPending,
     });
   } catch (error) {
     console.error("GET /api/payment-purposes/[id] error:", error);

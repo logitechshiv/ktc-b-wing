@@ -100,11 +100,13 @@ export async function POST(request: Request) {
       floorNumber: flat.floorNumber,
       flatNumber: flat.flatNumber,
       ownerName: data.ownerName || flat.ownerName || "",
+      ownerType: String(body.ownerType || "").trim() === "Renter" ? "Renter" : "Owner",
       paymentPurposeId: purpose._id,
       paymentPurpose: purpose.title,
       amount: data.amount,
       paymentMode: data.paymentMode,
       paymentDate: data.paymentDate,
+      paymentSource: "owner",
       whatsappSent: data.whatsappSent,
       notes: data.notes,
       createdBy: gate.user.id,
@@ -116,6 +118,16 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error("POST /api/payments error:", error);
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? Number((error as { code: number }).code)
+        : 0;
+    if (code === 11000) {
+      return NextResponse.json(
+        { success: false, message: "This flat already has a payment for this purpose" },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       { success: false, message: error instanceof Error ? error.message : "Unable to save payment" },
       { status: 500 }

@@ -88,7 +88,7 @@ export async function GET(request: Request) {
 
 /**
  * POST /api/flats — Super Admin only
- * Upserts by floorNumber + flatNumber (updates if the flat already exists).
+ * Creates a new flat. Flat numbers are unique — duplicates are rejected.
  */
 export async function POST(request: Request) {
   try {
@@ -105,37 +105,45 @@ export async function POST(request: Request) {
 
     const { data } = validated;
 
-    const flat = await Flat.findOneAndUpdate(
-      { floorNumber: data.floorNumber, flatNumber: data.flatNumber },
-      {
-        $set: {
-          ownerName: data.ownerName,
-          ownerMobile: data.ownerMobile,
-          renterName: data.renterName,
-          renterMobile: data.renterMobile,
-          status: data.status,
-          notes: data.notes,
-        },
-        $unset: {
-          ownerNameGujarati: "",
-          renterNameGujarati: "",
-        },
-        $setOnInsert: {
-          floorNumber: data.floorNumber,
-          flatNumber: data.flatNumber,
-        },
-      },
-      { upsert: true, new: true, runValidators: true }
-    );
+    const existing = await Flat.findOne({ flatNumber: data.flatNumber }).lean();
+    if (existing) {
+      return NextResponse.json(
+        { success: false, message: "Flat No. already exists." },
+        { status: 409 }
+      );
+    }
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: "Plot details saved",
-        flat: serializeFlat(flat),
-      },
-      { status: 200 }
-    );
+    try {
+      const flat = await Flat.create({
+        floorNumber: data.floorNumber,
+        flatNumber: data.flatNumber,
+        ownerName: data.ownerName,
+        ownerMobile: data.ownerMobile,
+        renterName: data.renterName,
+        renterMobile: data.renterMobile,
+        status: data.status,
+        notes: data.notes,
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Plot details saved",
+          flat: serializeFlat(flat),
+        },
+        { status: 201 }
+      );
+    } catch (err: unknown) {
+      // Mongo duplicate key (unique index on flatNumber)
+      const code = err && typeof err === "object" && "code" in err ? Number((err as { code: number }).code) : 0;
+      if (code === 11000) {
+        return NextResponse.json(
+          { success: false, message: "Flat No. already exists." },
+          { status: 409 }
+        );
+      }
+      throw err;
+    }
   } catch (error) {
     console.error("POST /api/flats error:", error);
     return NextResponse.json(

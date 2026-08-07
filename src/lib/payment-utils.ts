@@ -43,28 +43,37 @@ export function serializePayment(doc: {
   floorNumber: number;
   flatNumber: string;
   ownerName?: string | null;
+  ownerType?: string | null;
   paymentPurposeId: { toString(): string };
   paymentPurpose: string;
   amount: number;
   paymentMode: DbPaymentMode;
   paymentDate: Date;
+  paymentSource?: string | null;
   whatsappSent?: boolean | null;
   notes?: string | null;
   createdBy?: { toString(): string } | null;
   createdAt?: Date;
   updatedAt?: Date;
 }) {
+  const paymentSource =
+    String(doc.paymentSource || "").toLowerCase() === "builder" ? "builder" : "owner";
+  const ownerTypeRaw = String(doc.ownerType || "").trim();
+  const ownerType =
+    ownerTypeRaw === "Owner" || ownerTypeRaw === "Renter" ? ownerTypeRaw : "";
   return {
     id: doc._id.toString(),
     flatId: doc.flatId.toString(),
     floorNumber: doc.floorNumber,
     flatNumber: doc.flatNumber,
     ownerName: doc.ownerName || "",
+    ownerType,
     paymentPurposeId: doc.paymentPurposeId.toString(),
     paymentPurpose: doc.paymentPurpose || "",
     amount: Number(doc.amount) || 0,
     paymentMode: doc.paymentMode,
     paymentDate: doc.paymentDate,
+    paymentSource,
     whatsappSent: !!doc.whatsappSent,
     notes: doc.notes || "",
     createdBy: doc.createdBy ? doc.createdBy.toString() : null,
