@@ -1,16 +1,7 @@
 import mongoose, { Schema, models, model, type InferSchemaType, type Model } from "mongoose";
-import {
-  EXPENSE_METHODS,
-  EXPENSE_PAYMENT_METHODS,
-} from "@/lib/expense-constants";
+import { EXPENSE_PAYMENT_METHODS } from "@/lib/expense-constants";
 
-export {
-  EXPENSE_METHODS,
-  EXPENSE_PAYMENT_METHODS,
-  DEFAULT_EXPENSE_CATEGORIES,
-  type DbExpenseMethod,
-  type DbExpensePaymentMethod,
-} from "@/lib/expense-constants";
+export { EXPENSE_PAYMENT_METHODS, type DbExpensePaymentMethod } from "@/lib/expense-constants";
 
 const ExpenseSchema = new Schema(
   {
@@ -20,12 +11,13 @@ const ExpenseSchema = new Schema(
       trim: true,
       index: true,
     },
+    /** @deprecated legacy English title — kept for reading old records */
     expenseTitle: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
-      index: true,
     },
+    /** Expense title in Gujarati (primary title field) */
     expenseTitleGujarati: {
       type: String,
       default: "",
@@ -45,22 +37,6 @@ const ExpenseSchema = new Schema(
       sparse: true,
       index: true,
     },
-    expenseMethod: {
-      type: String,
-      enum: EXPENSE_METHODS,
-      required: true,
-      index: true,
-    },
-    collectionPurposeId: {
-      type: Schema.Types.ObjectId,
-      ref: "PaymentPurpose",
-      default: null,
-    },
-    collectionPurposeName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
     paymentMethod: {
       type: String,
       enum: EXPENSE_PAYMENT_METHODS,
@@ -72,6 +48,7 @@ const ExpenseSchema = new Schema(
       required: true,
       index: true,
     },
+    /** Vercel Blob URL (or legacy local path) */
     billImage: {
       type: String,
       default: "",
@@ -95,6 +72,7 @@ const ExpenseSchema = new Schema(
   {
     timestamps: true,
     collection: "expenses",
+    strict: false,
   }
 );
 

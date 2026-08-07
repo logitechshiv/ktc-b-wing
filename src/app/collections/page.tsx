@@ -65,7 +65,7 @@ export default function CollectionsPage() {
   const [purposeId, setPurposeId] = useState<"all" | string>("all");
   const [purposeReady, setPurposeReady] = useState(false);
   const [modeFilter, setModeFilter] = useState<"all" | PaymentMode>("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "pending">("all");
+  const [statusFilter, setStatusFilter] = useState<"paid" | "pending">("paid");
 
   const [purposes, setPurposes] = useState<PurposeRecord[]>([]);
   const [purposeStats, setPurposeStats] = useState<PurposeStat[]>([]);
@@ -204,7 +204,7 @@ export default function CollectionsPage() {
   const hasFilters =
     flatQ.trim() !== "" ||
     modeFilter !== "all" ||
-    statusFilter !== "all" ||
+    statusFilter !== "paid" ||
     (purposeReady && firstPurpose != null && purposeId !== firstPurpose.id);
 
   function flashSuccess(msg: string) {
@@ -215,7 +215,7 @@ export default function CollectionsPage() {
   function clearFilters() {
     setFlatQ("");
     setModeFilter("all");
-    setStatusFilter("all");
+    setStatusFilter("paid");
     setPurposeId(firstPurpose?.id ?? "all");
   }
 
@@ -432,12 +432,7 @@ export default function CollectionsPage() {
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-        <h1 className="text-[15px] font-bold text-navy">Search by Flat No — Payment History & Dues</h1>
-        <p className="mt-1 text-xs leading-relaxed text-slate-500">
-          ફ્લેટ અથવા માલિકથી શોધો · Purpose (Round) પસંદ કરો · Paid / Pending અને Payment Mode થી ફિલ્ટર કરો.
-        </p>
-
-        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <label className="block">
             <span className="mb-1 block text-[11px] font-medium text-slate-500">Flat No / Owner</span>
             <input
@@ -486,41 +481,39 @@ export default function CollectionsPage() {
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(["all", "paid", "pending"] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatusFilter(s)}
-              className={
-                "rounded-full border px-3 py-1 text-xs font-medium capitalize transition " +
-                (statusFilter === s
-                  ? "border-brand bg-brand text-white"
-                  : "border-slate-200 bg-white text-slate-500")
-              }
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-medium text-slate-500">Payment History</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "paid" | "pending")}
+              className={formSelectFilter}
             >
-              {s === "all" ? "All" : s === "paid" ? "Paid" : "Pending"}
-            </button>
-          ))}
+              <option value="paid">જમા થયેલ (Paid)</option>
+              <option value="pending">બાકી (Pending)</option>
+            </select>
+          </label>
         </div>
 
-        <div className="mt-2 flex flex-wrap gap-2">
-          {(["all", "cash", "bank", "upi"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setModeFilter(m)}
-              className={
-                "rounded-full border px-3 py-1 text-xs font-medium capitalize transition " +
-                (modeFilter === m
-                  ? "border-brand bg-brand text-white"
-                  : "border-slate-200 bg-white text-slate-500")
-              }
-            >
-              {m === "all" ? "All modes" : m}
-            </button>
-          ))}
-        </div>
+        {statusFilter === "paid" && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(["all", "cash", "bank", "upi"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setModeFilter(m)}
+                className={
+                  "rounded-full border px-3 py-1 text-xs font-medium capitalize transition " +
+                  (modeFilter === m
+                    ? "border-brand bg-brand text-white"
+                    : "border-slate-200 bg-white text-slate-500")
+                }
+              >
+                {m === "all" ? "All modes" : m}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Purpose progress */}
         <ul className="mt-3 space-y-1.5">

@@ -140,6 +140,11 @@ export default function ExpenseRow({
             </span>
             <span className="min-w-0 text-sm font-bold text-navy">{e.name}</span>
           </div>
+          {e.note?.trim() ? (
+            <p className="mt-1.5 whitespace-pre-wrap break-words text-[12px] leading-snug text-slate-500">
+              <span className="font-medium text-slate-500">નોંધ:</span> {e.note.trim()}
+            </p>
+          ) : null}
         </div>
         <div className="shrink-0 text-sm font-bold tabular-nums text-rose-500">{inr(e.amount)}</div>
       </div>
@@ -175,11 +180,11 @@ export default function ExpenseRow({
                 Bill
               </span>
             ))}
-          {pay && (
+          {/* {pay && (
             <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
               {pay}
             </span>
-          )}
+          )} */}
           {method && (
             <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
               {method}

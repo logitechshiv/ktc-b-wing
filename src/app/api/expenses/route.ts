@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Expense from "@/models/Expense";
-import PaymentPurpose from "@/models/PaymentPurpose";
 import { requireSuperAdmin } from "@/lib/require-super-admin";
 import { serializeExpense, validateExpensePayload } from "@/lib/expense-utils";
 import { getNextDisplayOrder } from "@/lib/expense-order";
-import mongoose from "mongoose";
 
 export const runtime = "nodejs";
 
@@ -29,11 +27,10 @@ export async function GET(request: Request) {
     if (q) {
       const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
       filter.$or = [
-        { expenseTitle: regex },
         { expenseTitleGujarati: regex },
+        { expenseTitle: regex },
         { category: regex },
         { notes: regex },
-        { collectionPurposeName: regex },
       ];
     }
 
@@ -84,27 +81,10 @@ export async function POST(request: Request) {
 
     const { data } = validated;
     const displayOrder = await getNextDisplayOrder();
-    let purposeName = data.collectionPurposeName;
-
-    if (data.expenseMethod === "collection" && data.collectionPurposeId) {
-      if (!mongoose.Types.ObjectId.isValid(data.collectionPurposeId)) {
-        return NextResponse.json({ success: false, message: "Invalid purpose id" }, { status: 400 });
-      }
-      const purpose = await PaymentPurpose.findById(data.collectionPurposeId);
-      if (!purpose) {
-        return NextResponse.json({ success: false, message: "Purpose not found" }, { status: 404 });
-      }
-      purposeName = purpose.title;
-    }
 
     const expense = await Expense.create({
       ...data,
       displayOrder,
-      collectionPurposeId:
-        data.expenseMethod === "collection" && data.collectionPurposeId
-          ? data.collectionPurposeId
-          : null,
-      collectionPurposeName: purposeName,
       createdBy: gate.user.id,
     });
 

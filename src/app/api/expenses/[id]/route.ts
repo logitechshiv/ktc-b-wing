@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import Expense from "@/models/Expense";
-import PaymentPurpose from "@/models/PaymentPurpose";
 import { requireSuperAdmin } from "@/lib/require-super-admin";
 import { serializeExpense, validateExpensePayload } from "@/lib/expense-utils";
 
@@ -70,38 +69,25 @@ export async function PUT(request: Request, context: RouteContext) {
     }
 
     const { data } = validated;
-    let purposeName = data.collectionPurposeName;
-
-    if (data.expenseMethod === "collection" && data.collectionPurposeId) {
-      if (!mongoose.Types.ObjectId.isValid(data.collectionPurposeId)) {
-        return NextResponse.json({ success: false, message: "Invalid purpose id" }, { status: 400 });
-      }
-      const purpose = await PaymentPurpose.findById(data.collectionPurposeId);
-      if (!purpose) {
-        return NextResponse.json({ success: false, message: "Purpose not found" }, { status: 404 });
-      }
-      purposeName = purpose.title;
-    }
 
     const updated = await Expense.findByIdAndUpdate(
       id,
       {
         $set: {
           category: data.category,
-          expenseTitle: data.expenseTitle,
           expenseTitleGujarati: data.expenseTitleGujarati,
           amount: data.amount,
-          expenseMethod: data.expenseMethod,
           paymentMethod: data.paymentMethod,
           expenseDate: data.expenseDate,
           billImage: data.billImage,
           notes: data.notes,
           whatsappShared: data.whatsappShared,
-          collectionPurposeId:
-            data.expenseMethod === "collection" && data.collectionPurposeId
-              ? data.collectionPurposeId
-              : null,
-          collectionPurposeName: data.expenseMethod === "collection" ? purposeName : "",
+        },
+        $unset: {
+          expenseTitle: "",
+          expenseMethod: "",
+          collectionPurposeId: "",
+          collectionPurposeName: "",
         },
       },
       { new: true, runValidators: true }

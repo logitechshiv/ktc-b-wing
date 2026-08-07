@@ -10,15 +10,19 @@ import type {
   VehicleType,
 } from "@/lib/vehicles-api";
 import { readFlats, type FlatRecord } from "@/lib/flats-api";
-import { formField, formFieldReadonly, formSelect } from "@/lib/form-styles";
+import { formField, formSelect } from "@/lib/form-styles";
 
 const VEHICLE_TYPE_OPTIONS: { value: VehicleType; label: string }[] = [
   { value: "car", label: "Car" },
   { value: "bike", label: "Bike" },
-  { value: "scooter", label: "Scooter" },
   { value: "auto", label: "Auto" },
-  { value: "other", label: "Other" },
 ];
+
+function normalizeVehicleType(type: string | undefined): VehicleType {
+  const t = String(type || "").toLowerCase();
+  if (t === "bike" || t === "auto") return t;
+  return "car";
+}
 
 function emptyEntry(): VehicleEntryInput {
   return {
@@ -189,7 +193,7 @@ export default function VehicleModal({
       setSelection(initial.flatId ? optionValue(initial.flatId, kind) : "");
       setEntries([
         {
-          vehicleType: initial.vehicleType,
+          vehicleType: normalizeVehicleType(initial.vehicleType),
           vehicleNumber: initial.vehicleNumber,
           brand: "",
           model: "",
@@ -296,7 +300,7 @@ export default function VehicleModal({
       }
       seen.add(vehicleNumber);
       cleaned.push({
-        vehicleType: entry.vehicleType,
+        vehicleType: normalizeVehicleType(entry.vehicleType),
         vehicleNumber,
         brand: "",
         model: "",
@@ -326,20 +330,6 @@ export default function VehicleModal({
 
   const field = formField;
   const fieldSelect = formSelect;
-  const fieldReadonly = formFieldReadonly;
-
-  const contactName =
-    vehicleOwnerType === "renter"
-      ? selectedFlat?.renterName?.trim() || ""
-      : selectedFlat?.ownerName?.trim() || "";
-  const contactMobile =
-    vehicleOwnerType === "renter"
-      ? selectedFlat?.renterMobile?.trim() || ""
-      : selectedFlat?.ownerMobile?.trim() || "";
-  const nameLabel =
-    vehicleOwnerType === "renter" ? "Renter Name (Gujarati)" : "Owner Name (Gujarati)";
-  const mobileLabel = vehicleOwnerType === "renter" ? "Renter Mobile" : "Owner Mobile";
-  const typeLabel = vehicleOwnerType === "renter" ? "Renter" : "Owner";
 
   return (
     <div
@@ -406,27 +396,6 @@ export default function VehicleModal({
               >
                 કોઈ માલિક નથી
               </div>
-            )}
-
-            {selectedFlat && canSave && (
-              <>
-                <label className="block text-xs font-semibold text-slate-600">
-                  Flat Number
-                  <input value={selectedFlat.flatNumber} readOnly className={fieldReadonly} />
-                </label>
-                <label className="block text-xs font-semibold text-slate-600">
-                  {nameLabel}
-                  <input value={contactName} readOnly className={fieldReadonly} />
-                </label>
-                <label className="block text-xs font-semibold text-slate-600">
-                  {mobileLabel}
-                  <input value={contactMobile} readOnly className={fieldReadonly} />
-                </label>
-                <label className="block text-xs font-semibold text-slate-600">
-                  Owner Type
-                  <input value={typeLabel} readOnly className={fieldReadonly} />
-                </label>
-              </>
             )}
           </section>
 

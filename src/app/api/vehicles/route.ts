@@ -5,8 +5,10 @@ import Flat from "@/models/Flat";
 import { requireSuperAdmin } from "@/lib/require-super-admin";
 import {
   computeVehicleSummary,
+  compareVehiclesByTypeThenFlat,
   serializeVehicle,
   validateBulkVehiclePayload,
+  vehicleTypeSortRank,
 } from "@/lib/vehicle-utils";
 
 export const runtime = "nodejs";
@@ -54,7 +56,9 @@ export async function GET(request: Request) {
     }
 
     const [docs, allForSummary, flats] = await Promise.all([
-      Vehicle.find(filter).sort({ floorNumber: 1, flatNumber: 1, vehicleNumber: 1 }).lean(),
+      Vehicle.find(filter)
+        .sort({ vehicleType: 1, flatNumber: 1, vehicleNumber: 1 })
+        .lean(),
       Vehicle.find({}).select("vehicleType stickerIssued").lean(),
       Flat.find({}).select("flatNumber ownerName ownerMobile renterName renterMobile").lean(),
     ]);
@@ -71,7 +75,8 @@ export async function GET(request: Request) {
       ])
     );
 
-    const vehicles = docs.map((d) => {
+    const vehicles = docs
+      .map((d) => {
       const rawType = String((d as { vehicleOwnerType?: string }).vehicleOwnerType ?? "owner")
         .trim()
         .toLowerCase();
@@ -100,7 +105,8 @@ export async function GET(request: Request) {
       }
 
       return base;
-    });
+    })
+      .sort(compareVehiclesByTypeThenFlat);
 
     const summary = computeVehicleSummary(
       allForSummary as Array<{ vehicleType: string; stickerIssued?: boolean }>
@@ -137,12 +143,20 @@ export async function GET(request: Request) {
       map.set(key, group);
     }
 
-    const groups = Array.from(map.values()).sort(
-      (a, b) =>
-        a.floorNumber - b.floorNumber ||
+    for (const group of map.values()) {
+      group.vehicles.sort(compareVehiclesByTypeThenFlat);
+    }
+
+    const groups = Array.from(map.values()).sort((a, b) => {
+      const aRank = Math.min(...a.vehicles.map((v) => vehicleTypeSortRank(v.vehicleType)));
+      const bRank = Math.min(...b.vehicles.map((v) => vehicleTypeSortRank(v.vehicleType)));
+      return (
+        aRank - bRank ||
+        Number(a.flatNumber) - Number(b.flatNumber) ||
         a.flatNumber.localeCompare(b.flatNumber) ||
         a.vehicleOwnerType.localeCompare(b.vehicleOwnerType)
-    );
+      );
+    });
 
     return NextResponse.json({
       success: true,

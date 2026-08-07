@@ -68,8 +68,8 @@ interface Props {
   error: string | null;
   isSuperAdmin: boolean;
   searchQuery?: string;
-  /** all = paid+pending sections; paid | pending = one section */
-  statusFilter?: "all" | "paid" | "pending";
+  /** paid | pending — never mix both lists */
+  statusFilter?: "paid" | "pending";
   /** all = every mode; cash | bank | upi = paid records only */
   modeFilter?: "all" | "cash" | "bank" | "upi";
   onClose: () => void;
@@ -82,14 +82,12 @@ export default function PurposeDetailsPanel({
   error,
   isSuperAdmin,
   searchQuery = "",
-  statusFilter = "all",
+  statusFilter = "paid",
   modeFilter = "all",
-  onClose,
-  onAddCollection,
 }: Props) {
   const q = searchQuery.trim().toLowerCase();
-  const showPaid = statusFilter === "all" || statusFilter === "paid";
-  const showPending = statusFilter === "all" || statusFilter === "pending";
+  const showPaid = statusFilter === "paid";
+  const showPending = statusFilter === "pending";
 
   const paid = useMemo(() => {
     if (!details) return [];
@@ -102,7 +100,6 @@ export default function PurposeDetailsPanel({
 
   const pending = useMemo(() => {
     if (!details) return [];
-    // Pending has no payment yet — mode filter does not apply
     return details.pending.filter(
       (row) =>
         flatHasOwner(row.ownerName, row.hasOwner) &&
@@ -114,8 +111,9 @@ export default function PurposeDetailsPanel({
   if (!details && !loading && !error) return null;
 
   return (
-    <section className="space-y-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
+    <div className="space-y-4">
+      {/* Summary card only — history list is rendered separately below */}
+      <section className="space-y-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-bold text-navy">
             {details?.purpose.title || "Purpose details"}
@@ -126,20 +124,19 @@ export default function PurposeDetailsPanel({
             </p>
           )}
         </div>
-        
-      </div>
 
-      {loading && <p className="py-6 text-center text-sm text-slate-400">Loading purpose details…</p>}
+        {loading && <p className="py-6 text-center text-sm text-slate-400">Loading purpose details…</p>}
 
-      {error && (
-        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700 dark:border-rose-600/50 dark:bg-rose-950 dark:text-rose-300">
-          {error}
-        </div>
-      )}
+        {error && (
+          <div
+            role="alert"
+            className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700 dark:border-rose-600/50 dark:bg-rose-950 dark:text-rose-300"
+          >
+            {error}
+          </div>
+        )}
 
-      {details && !loading && (
-        <>
-          {/* Summary */}
+        {details && !loading && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800">
               <div className="text-[10px] text-slate-500 dark:text-slate-400">કુલ ફ્લેટ</div>
@@ -171,155 +168,154 @@ export default function PurposeDetailsPanel({
                 {inr(details.summary.totalPending)}
               </div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800 col-span-2 sm:col-span-3">
+            <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800 sm:col-span-3">
               <div className="text-[10px] text-slate-500 dark:text-slate-400">Collection %</div>
               <div className="text-sm font-bold tabular-nums text-navy dark:text-slate-50">
                 {details.summary.collectionPercent ?? 0}%
               </div>
             </div>
           </div>
+        )}
+      </section>
 
-          {/* Paid section */}
-          {showPaid && (
-          <div>
-            <div className="mb-2 flex items-end justify-between gap-2">
-              <h3 className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
-                જમા થયેલ રકમ
-              </h3>
-              <div className="text-right text-[11px] text-slate-400">
-                {paid.length} flats · {inr(details.summary.totalCollected)}
-              </div>
+      {/* Payment History list — outside the summary card */}
+      {details && !loading && showPaid && (
+        <section className="space-y-2">
+          <div className="flex items-end justify-between gap-2 px-0.5">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+              જમા થયેલ (Paid)
+            </h3>
+            <div className="text-right text-[11px] text-slate-400">
+              {paid.length} flats · {inr(details.summary.totalCollected)}
             </div>
-            <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-100">
-              {paid.map((row) => {
-                const hasOwner = flatHasOwner(row.ownerName, row.hasOwner);
-                return (
-                  <li key={row.paymentId || row.flatNumber} className="px-3 py-3 sm:px-4">
-                    <div className="flex items-start gap-2.5">
-                      <span
-                        className={
-                          "mt-0.5 flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-bold text-white " +
-                          badgeColor(row.flatNumber)
-                        }
-                      >
-                        {row.flatNumber}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div
-                              className={
-                                "truncate font-bold " + (hasOwner ? "text-navy" : "text-slate-400")
-                              }
-                            >
-                              {displayOwnerName(row.ownerName)}
-                            </div>
-                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
-                              <span className="tabular-nums">{fmtDateDMY(row.paymentDate)}</span>
-                              <span className="text-slate-300">·</span>
-                              <span className="rounded bg-slate-100 px-1.5 py-0.5 capitalize text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                                {row.paymentMode}
-                              </span>
-                            </div>
+          </div>
+          <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+            {paid.map((row) => {
+              const hasOwner = flatHasOwner(row.ownerName, row.hasOwner);
+              return (
+                <li key={`paid-${row.paymentId || row.flatNumber}`} className="px-3 py-3 sm:px-4">
+                  <div className="flex items-start gap-2.5">
+                    <span
+                      className={
+                        "mt-0.5 flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-bold text-white " +
+                        badgeColor(row.flatNumber)
+                      }
+                    >
+                      {row.flatNumber}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div
+                            className={
+                              "truncate font-bold " + (hasOwner ? "text-navy" : "text-slate-400")
+                            }
+                          >
+                            {displayOwnerName(row.ownerName)}
                           </div>
-                          <div className="shrink-0 text-base font-bold tabular-nums text-brand">
-                            {inr(row.amount)}
-                          </div>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-600/50 dark:bg-emerald-950 dark:text-emerald-300">
-                            🟢 જમા
-                          </span>
-                          {!hasOwner && (
-                            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                              No Owner
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+                            <span className="tabular-nums">{fmtDateDMY(row.paymentDate)}</span>
+                            <span className="text-slate-300">·</span>
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 capitalize text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                              {row.paymentMode}
                             </span>
-                          )}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-base font-bold tabular-nums text-brand">
+                          {inr(row.amount)}
                         </div>
                       </div>
-                    </div>
-                  </li>
-                );
-              })}
-              {paid.length === 0 && (
-                <li className="px-4 py-8 text-center text-sm text-slate-400">
-                  હજુ કોઈ જમા નથી.
-                </li>
-              )}
-            </ul>
-          </div>
-          )}
-
-          {/* Pending section — Sold flats with owner only */}
-          {showPending && (
-          <div>
-            <div className="mb-2 flex items-end justify-between gap-2">
-              <h3 className="text-xs font-bold uppercase tracking-wide text-rose-700 dark:text-rose-300">બાકી રકમ</h3>
-              <div className="text-right text-[11px] text-slate-400">
-                {pending.length} pending · {inr(details.summary.totalPending)}
-              </div>
-            </div>
-            <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-100">
-              {pending.map((row) => {
-                const mobileOk = isValidMobile(row.ownerMobile);
-                return (
-                  <li key={row.flatId || row.flatNumber} className="px-3 py-3 sm:px-4">
-                    <div className="flex items-start gap-2.5">
-                      <span
-                        className={
-                          "mt-0.5 flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-bold text-white " +
-                          badgeColor(row.flatNumber)
-                        }
-                      >
-                        {row.flatNumber}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="truncate font-bold text-navy">
-                              {displayOwnerName(row.ownerName)}
-                            </div>
-                            <div className="mt-0.5 text-[11px] text-slate-400">Flat {row.flatNumber}</div>
-                          </div>
-                          <div className="shrink-0 text-base font-bold tabular-nums text-amber-600 dark:text-amber-400">
-                            {inr(row.pendingAmount)}
-                          </div>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-700 dark:border-rose-600/50 dark:bg-rose-950 dark:text-rose-300">
-                            🔴 બાકી
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-600/50 dark:bg-emerald-950 dark:text-emerald-300">
+                          🟢 જમા
+                        </span>
+                        {!hasOwner && (
+                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                            No Owner
                           </span>
-                          {isSuperAdmin &&
-                            (mobileOk ? (
-                              <a
-                                href={reminderHref(details.purpose, row)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center rounded-lg border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-600/50 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"
-                              >
-                                Send Reminder
-                              </a>
-                            ) : (
-                              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                                મોબાઇલ નંબર ઉપલબ્ધ નથી
-                              </span>
-                            ))}
-                        </div>
+                        )}
                       </div>
                     </div>
-                  </li>
-                );
-              })}
-              {pending.length === 0 && (
-                <li className="px-4 py-8 text-center text-sm text-emerald-700 dark:text-emerald-300">
-                  બધું ક્લિયર ✓ — કોઈ બાકી નથી.
+                  </div>
                 </li>
-              )}
-            </ul>
-          </div>
-          )}
-        </>
+              );
+            })}
+            {paid.length === 0 && (
+              <li className="px-4 py-8 text-center text-sm text-slate-400">હજુ કોઈ જમા નથી.</li>
+            )}
+          </ul>
+        </section>
       )}
-    </section>
+
+      {details && !loading && showPending && (
+        <section className="space-y-2">
+          <div className="flex items-end justify-between gap-2 px-0.5">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-rose-700 dark:text-rose-300">
+              બાકી (Pending)
+            </h3>
+            <div className="text-right text-[11px] text-slate-400">
+              {pending.length} pending · {inr(details.summary.totalPending)}
+            </div>
+          </div>
+          <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+            {pending.map((row) => {
+              const mobileOk = isValidMobile(row.ownerMobile);
+              return (
+                <li key={`pending-${row.flatId || row.flatNumber}`} className="px-3 py-3 sm:px-4">
+                  <div className="flex items-start gap-2.5">
+                    <span
+                      className={
+                        "mt-0.5 flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-bold text-white " +
+                        badgeColor(row.flatNumber)
+                      }
+                    >
+                      {row.flatNumber}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate font-bold text-navy">
+                            {displayOwnerName(row.ownerName)}
+                          </div>
+                          <div className="mt-0.5 text-[11px] text-slate-400">Flat {row.flatNumber}</div>
+                        </div>
+                        <div className="shrink-0 text-base font-bold tabular-nums text-amber-600 dark:text-amber-400">
+                          {inr(row.pendingAmount)}
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-700 dark:border-rose-600/50 dark:bg-rose-950 dark:text-rose-300">
+                          🔴 બાકી
+                        </span>
+                        {isSuperAdmin &&
+                          (mobileOk ? (
+                            <a
+                              href={reminderHref(details.purpose, row)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center rounded-lg border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-600/50 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"
+                            >
+                              WhatsApp Reminder
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                              મોબાઇલ નંબર ઉપલબ્ધ નથી
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+            {pending.length === 0 && (
+              <li className="px-4 py-8 text-center text-sm text-emerald-700 dark:text-emerald-300">
+                બધું ક્લિયર ✓ — કોઈ બાકી નથી.
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
+    </div>
   );
 }

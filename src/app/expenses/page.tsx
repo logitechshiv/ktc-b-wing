@@ -3,20 +3,23 @@
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { inr } from "@/lib/format";
 import type { SafeUser } from "@/lib/auth-client";
-import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/expense-constants";
 import { displayExpenseTitle } from "@/lib/expense-utils";
 import {
   createExpense,
+  createExpenseCategory,
   deleteExpense,
+  deleteExpenseCategory,
   markExpenseWhatsappShared,
+  readExpenseCategories,
   readExpenses,
   reorderExpenses,
   updateExpense,
+  updateExpenseCategory,
+  type ExpenseCategoryRecord,
   type ExpenseInput,
   type ExpenseRecord,
 } from "@/lib/expenses-api";
-import { readPurposes, type PurposeRecord } from "@/lib/payment-purposes-api";
-import { notifyDataChanged } from "@/lib/data-sync";
+import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
 import ExpenseRow from "@/components/ExpenseRow";
 import ExpenseModal from "@/components/expenses/ExpenseModal";
 import DeleteExpenseDialog from "@/components/expenses/DeleteExpenseDialog";
@@ -25,15 +28,13 @@ function toRow(e: ExpenseRecord) {
   return {
     id: e.id,
     category: e.category,
-    name: displayExpenseTitle(e.expenseTitle, e.expenseTitleGujarati),
+    name: displayExpenseTitle(e.expenseTitleGujarati),
     amount: e.amount,
     date: e.expenseDate,
-    note: e.notes || undefined,
+    note: e.notes?.trim() || undefined,
     paymentMethod: e.paymentMethod,
-    expenseMethod: e.expenseMethod,
-    purposeName: e.collectionPurposeName || undefined,
-    hasBill: !!e.billImage,
-    billUrl: e.billImage || undefined,
+    hasBill: !!e.billImage?.trim(),
+    billUrl: e.billImage?.trim() || undefined,
     sharedToGroup: e.whatsappShared,
     displayOrder: e.displayOrder,
   };
@@ -44,7 +45,8 @@ export default function ExpensesPage() {
   const [category, setCategory] = useState("all");
 
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
-  const [dbCategories, setDbCategories] = useState<string[]>([]);
+  const [managedCategories, setManagedCategories] = useState<ExpenseCategoryRecord[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
   const [shownTotal, setShownTotal] = useState(0);
   const [summaryTotal, setSummaryTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -54,8 +56,6 @@ export default function ExpensesPage() {
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
-
-  const [purposes, setPurposes] = useState<PurposeRecord[]>([]);
 
   const [user, setUser] = useState<SafeUser | null>(null);
   const isSuperAdmin = user?.role === "super_admin";
@@ -68,6 +68,11 @@ export default function ExpensesPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<ExpenseRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState("");
+  const [categorySaving, setCategorySaving] = useState(false);
 
   const filtersActive = q.trim() !== "" || category !== "all";
   const canReorder = isSuperAdmin && !filtersActive && !reordering;
@@ -85,10 +90,13 @@ export default function ExpensesPage() {
       .catch(() => setUser(null));
   }, []);
 
-  useEffect(() => {
-    readPurposes(true)
-      .then((data) => setPurposes(data.purposes))
-      .catch(() => setPurposes([]));
+  const loadCategories = useCallback(async () => {
+    try {
+      const list = await readExpenseCategories();
+      setManagedCategories(list);
+    } catch {
+      setManagedCategories([]);
+    }
   }, []);
 
   const load = useCallback(async () => {
@@ -99,7 +107,7 @@ export default function ExpensesPage() {
       setExpenses(data.expenses);
       setShownTotal(data.shownTotal);
       setSummaryTotal(data.summary.totalAmount);
-      setDbCategories(data.categories);
+      setExpenseCategories(data.categories || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load expenses");
       setExpenses([]);
@@ -110,16 +118,36 @@ export default function ExpensesPage() {
   }, [q, category]);
 
   useEffect(() => {
+    void loadCategories();
+  }, [loadCategories]);
+
+  useEffect(() => {
     const t = window.setTimeout(() => {
       void load();
     }, 250);
     return () => window.clearTimeout(t);
   }, [load]);
 
-  const categories = useMemo(() => {
-    const set = new Set<string>([...DEFAULT_EXPENSE_CATEGORIES, ...dbCategories]);
-    return ["all", ...Array.from(set)];
-  }, [dbCategories]);
+  // Live refresh when expenses change elsewhere (dashboard, another tab)
+  useEffect(() => {
+    return subscribeDataChanged((source) => {
+      if (source === "expense" || source === "unknown") {
+        void load();
+        void loadCategories();
+      }
+    });
+  }, [load, loadCategories]);
+
+  const filterCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of managedCategories) {
+      if (c.name.trim()) set.add(c.name.trim());
+    }
+    for (const c of expenseCategories) {
+      if (c.trim()) set.add(c.trim());
+    }
+    return ["all", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
+  }, [managedCategories, expenseCategories]);
 
   function openAdd() {
     setModalMode("add");
@@ -141,7 +169,10 @@ export default function ExpensesPage() {
     setSuccess(null);
     try {
       if (modalMode === "edit" && editing) {
-        await updateExpense(editing.id, input);
+        await updateExpense(editing.id, {
+          ...input,
+          whatsappShared: editing.whatsappShared,
+        });
         setSuccess("Expense updated");
       } else {
         await createExpense(input);
@@ -182,6 +213,61 @@ export default function ExpensesPage() {
       setExpenses((list) => list.map((x) => (x.id === e.id ? updated : x)));
     } catch {
       /* ignore mark failures */
+    }
+  }
+
+  async function handleAddCategory() {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    setCategorySaving(true);
+    setError(null);
+    try {
+      await createExpenseCategory(name);
+      setNewCategoryName("");
+      setSuccess("Category added");
+      await loadCategories();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to add category");
+    } finally {
+      setCategorySaving(false);
+    }
+  }
+
+  async function handleSaveCategory() {
+    if (!editingCategoryId) return;
+    const name = editingCategoryName.trim();
+    if (!name) return;
+    setCategorySaving(true);
+    setError(null);
+    try {
+      await updateExpenseCategory(editingCategoryId, name);
+      setEditingCategoryId(null);
+      setEditingCategoryName("");
+      setSuccess("Category updated");
+      await loadCategories();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to update category");
+    } finally {
+      setCategorySaving(false);
+    }
+  }
+
+  async function handleDeleteCategory(id: string) {
+    setCategorySaving(true);
+    setError(null);
+    try {
+      await deleteExpenseCategory(id);
+      if (editingCategoryId === id) {
+        setEditingCategoryId(null);
+        setEditingCategoryName("");
+      }
+      setSuccess("Category deleted");
+      await loadCategories();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete category");
+    } finally {
+      setCategorySaving(false);
     }
   }
 
@@ -291,7 +377,7 @@ export default function ExpensesPage() {
       />
 
       <div className="flex gap-2 overflow-x-auto pb-0.5 text-xs">
-        {categories.map((c) => (
+        {filterCategories.map((c) => (
           <button
             key={c}
             type="button"
@@ -307,6 +393,92 @@ export default function ExpensesPage() {
           </button>
         ))}
       </div>
+
+      {isSuperAdmin && (
+        <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Manage Categories
+          </div>
+          <div className="space-y-3 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="New category name"
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
+              />
+              <button
+                type="button"
+                disabled={categorySaving || !newCategoryName.trim()}
+                onClick={() => void handleAddCategory()}
+                className="shrink-0 rounded-xl bg-black px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+              >
+                + Add Category
+              </button>
+            </div>
+            <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-100">
+              {managedCategories.map((c) => (
+                <li key={c.id} className="flex items-center gap-2 px-3 py-2.5">
+                  {editingCategoryId === c.id ? (
+                    <>
+                      <input
+                        value={editingCategoryName}
+                        onChange={(e) => setEditingCategoryName(e.target.value)}
+                        className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-brand"
+                      />
+                      <button
+                        type="button"
+                        disabled={categorySaving}
+                        onClick={() => void handleSaveCategory()}
+                        className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCategoryId(null);
+                          setEditingCategoryName("");
+                        }}
+                        className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-500"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="min-w-0 flex-1 text-sm font-semibold text-navy">{c.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCategoryId(c.id);
+                          setEditingCategoryName(c.name);
+                        }}
+                        className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        disabled={categorySaving}
+                        onClick={() => void handleDeleteCategory(c.id)}
+                        className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </li>
+              ))}
+              {managedCategories.length === 0 && (
+                <li className="px-3 py-6 text-center text-sm text-slate-400">
+                  No categories yet. Add one above.
+                </li>
+              )}
+            </ul>
+          </div>
+        </section>
+      )}
 
       {isSuperAdmin && filtersActive && (
         <p className="text-[11px] text-amber-600">Clear search & filters to drag and reorder expenses.</p>
@@ -360,7 +532,7 @@ export default function ExpensesPage() {
         open={modalOpen}
         mode={modalMode}
         initial={editing}
-        purposes={purposes}
+        categories={managedCategories}
         saving={saving}
         error={modalError}
         onClose={() => {
@@ -374,9 +546,7 @@ export default function ExpensesPage() {
       <DeleteExpenseDialog
         open={!!deleteTarget}
         title={
-          deleteTarget
-            ? displayExpenseTitle(deleteTarget.expenseTitle, deleteTarget.expenseTitleGujarati)
-            : undefined
+          deleteTarget ? displayExpenseTitle(deleteTarget.expenseTitleGujarati) : undefined
         }
         loading={deleting}
         onCancel={() => setDeleteTarget(null)}

@@ -37,13 +37,6 @@ function badgeColor(flatNumber: string, floorNumber: number) {
 }
 
 function VehicleIcon({ type }: { type: VehicleType }) {
-  if (type === "car") {
-    return (
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand/10 text-lg" title="Car" aria-hidden>
-        🚗
-      </span>
-    );
-  }
   if (type === "bike") {
     return (
       <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-lg" title="Bike" aria-hidden>
@@ -58,27 +51,38 @@ function VehicleIcon({ type }: { type: VehicleType }) {
       </span>
     );
   }
-  if (type === "other") {
-    return (
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-lg" title="Other" aria-hidden>
-        🚐
-      </span>
-    );
-  }
   return (
-    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-lg" title="Scooter" aria-hidden>
-      🛵
+    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand/10 text-lg" title="Car" aria-hidden>
+      🚗
     </span>
   );
 }
 
 const TYPE_FILTERS: { value: VehicleType | "all"; label: string }[] = [
-  { value: "all", label: "All Types" },
+  { value: "all", label: "All types" },
   { value: "car", label: "Car" },
   { value: "bike", label: "Bike" },
-  { value: "scooter", label: "Scooter" },
   { value: "auto", label: "Auto" },
 ];
+
+const TYPE_SORT_RANK: Record<string, number> = { car: 0, bike: 1, auto: 2 };
+
+function sortGroupsByTypeThenFlat(groups: VehicleGroup[]): VehicleGroup[] {
+  return [...groups]
+    .map((g) => ({
+      ...g,
+      vehicles: [...g.vehicles].sort(
+        (a, b) =>
+          (TYPE_SORT_RANK[a.vehicleType] ?? 99) - (TYPE_SORT_RANK[b.vehicleType] ?? 99) ||
+          Number(a.flatNumber) - Number(b.flatNumber)
+      ),
+    }))
+    .sort((a, b) => {
+      const aRank = Math.min(...a.vehicles.map((v) => TYPE_SORT_RANK[v.vehicleType] ?? 99));
+      const bRank = Math.min(...b.vehicles.map((v) => TYPE_SORT_RANK[v.vehicleType] ?? 99));
+      return aRank - bRank || Number(a.flatNumber) - Number(b.flatNumber);
+    });
+}
 
 export default function VehiclesPage() {
   const [q, setQ] = useState("");
@@ -87,7 +91,14 @@ export default function VehiclesPage() {
   const [copied, setCopied] = useState<string | null>(null);
 
   const [groups, setGroups] = useState<VehicleGroup[]>([]);
-  const [summary, setSummary] = useState<VehicleSummary>({ total: 0, cars: 0, twoWheel: 0, noSticker: 0 });
+  const [summary, setSummary] = useState<VehicleSummary>({
+    total: 0,
+    cars: 0,
+    bikes: 0,
+    autos: 0,
+    twoWheel: 0,
+    noSticker: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -126,12 +137,12 @@ export default function VehiclesPage() {
         sticker: stickerFilter,
         type: typeFilter,
       });
-      setGroups(data.groups);
+      setGroups(sortGroupsByTypeThenFlat(data.groups));
       setSummary(data.summary);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load vehicles");
       setGroups([]);
-      setSummary({ total: 0, cars: 0, twoWheel: 0, noSticker: 0 });
+      setSummary({ total: 0, cars: 0, bikes: 0, autos: 0, twoWheel: 0, noSticker: 0 });
     } finally {
       setLoading(false);
     }
@@ -221,9 +232,6 @@ export default function VehiclesPage() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold text-navy">Vehicles</h1>
-          <p className="mt-0.5 text-xs text-slate-500">
-            ફ્લેટ અથવા વાહન નંબરથી શોધો — માલિકની વિગતો તરત જોઈ શકાય.
-          </p>
         </div>
         {isSuperAdmin && (
           <button
@@ -237,32 +245,34 @@ export default function VehiclesPage() {
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-xl border border-slate-100 bg-white px-3 py-2 shadow-sm">
-          <div className="text-[10px] text-slate-400">Total</div>
-          <div className="text-lg font-bold tabular-nums text-navy">{summary.total}</div>
+        <div className="rounded-xl border border-slate-100 bg-white px-3 py-3 text-center shadow-sm">
+          <div className="text-xl font-bold tabular-nums text-brand sm:text-2xl">{summary.total}</div>
+          <div className="mt-0.5 text-[11px] font-medium text-slate-500">Total</div>
         </div>
-        <div className="rounded-xl border border-slate-100 bg-white px-3 py-2 shadow-sm">
-          <div className="text-[10px] text-slate-400">Cars / 2W</div>
-          <div className="text-lg font-bold tabular-nums text-navy">
-            {summary.cars}
-            <span className="text-slate-300"> / </span>
-            {summary.twoWheel}
-          </div>
+        <div className="rounded-xl border border-slate-100 bg-white px-3 py-3 text-center shadow-sm">
+          <div className="text-xl font-bold tabular-nums text-brand sm:text-2xl">{summary.cars}</div>
+          <div className="mt-0.5 text-[11px] font-medium text-slate-500">Cars</div>
         </div>
-        <div className="rounded-xl border border-slate-100 bg-white px-3 py-2 shadow-sm">
-          <div className="text-[10px] text-slate-400">No sticker</div>
-          <div
-            className={
-              "text-lg font-bold tabular-nums " + (summary.noSticker ? "text-amber-600" : "text-navy")
-            }
-          >
-            {summary.noSticker}
-          </div>
+        <div className="rounded-xl border border-slate-100 bg-white px-3 py-3 text-center shadow-sm">
+          <div className="text-xl font-bold tabular-nums text-teal-600 sm:text-2xl">{summary.twoWheel}</div>
+          <div className="mt-0.5 text-[11px] font-medium text-slate-500">2-Wheelers</div>
         </div>
       </div>
 
+      <p className="flex items-start gap-2 text-[12px] leading-relaxed text-slate-500">
+        <span className="mt-0.5 shrink-0 text-brand" aria-hidden>
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3-3" />
+          </svg>
+        </span>
+        <span>
+          અહીં ફ્લેટ નંબર અથવા વાહન નંબર નાખીને કોઈપણ ફ્લેટના માલિકનું નામ, મોબાઈલ નંબર અને તેમના વાહનની વિગત જોઈ શકાય છે
+        </span>
+      </p>
+
       <div className="relative">
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand" aria-hidden>
+        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-brand" aria-hidden>
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="7" />
             <path d="M20 20l-3-3" />
@@ -272,50 +282,36 @@ export default function VehiclesPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Vehicle No / Flat No / Owner / Mobile"
-          className="w-full rounded-xl border border-brand/30 bg-brand/5 py-2.5 pl-9 pr-4 text-sm outline-none placeholder:text-slate-400 focus:border-brand focus:bg-white"
+          className="w-full rounded-full border border-brand/30 bg-brand/5 py-2.5 pl-10 pr-4 text-sm outline-none placeholder:text-slate-400 focus:border-brand focus:bg-white"
         />
       </div>
 
       <div className="flex items-center gap-2 overflow-x-auto pb-0.5 text-xs">
-        {(
-          [
-            ["all", "All"],
-            ["yes", "Sticker Yes"],
-            ["no", "Sticker No"],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setStickerFilter(value)}
-            className={
-              "shrink-0 rounded-full border px-3 py-1 font-medium transition " +
-              (stickerFilter === value
-                ? "border-brand bg-brand text-white"
-                : "border-slate-200 bg-white text-slate-500")
-            }
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex items-center gap-2 overflow-x-auto pb-0.5 text-xs">
-        {TYPE_FILTERS.map(({ value, label }) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setTypeFilter(value)}
-            className={
-              "shrink-0 rounded-full border px-3 py-1 font-medium transition " +
-              (typeFilter === value
-                ? "border-brand bg-brand text-white"
-                : "border-slate-200 bg-white text-slate-500")
-            }
-          >
-            {label}
-          </button>
-        ))}
+        {TYPE_FILTERS.map(({ value, label }) => {
+          const count =
+            value === "all"
+              ? summary.total
+              : value === "car"
+                ? summary.cars
+                : value === "bike"
+                  ? summary.bikes
+                  : summary.autos;
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTypeFilter(value)}
+              className={
+                "shrink-0 rounded-full border px-3 py-1.5 font-medium transition " +
+                (typeFilter === value
+                  ? "border-brand bg-brand text-white"
+                  : "border-slate-200 bg-white text-slate-500")
+              }
+            >
+              {label} ({count})
+            </button>
+          );
+        })}
       </div>
 
       {success && (
@@ -366,8 +362,8 @@ export default function VehiclesPage() {
                 >
                   {group.flatNumber}
                 </span>
-                <div className="mt-2 text-center text-base font-bold text-navy">{displayName}</div>
-                <div className="mt-0.5 text-[11px] font-medium text-slate-400">{roleLabel}</div>
+                <div className="mt-2 text-center text-base font-bold text-navy">{displayName} <span className="mt-0.5 text-[11px] font-medium text-slate-400">({roleLabel})</span></div>
+                
                 {displayMobile && (
                   <button
                     type="button"
@@ -388,31 +384,38 @@ export default function VehiclesPage() {
 
               <ul className="divide-y divide-slate-100 border-t border-slate-100">
                 {group.vehicles.map((v) => (
-                  <li key={v.id} className="flex items-center gap-2.5 px-3 py-2.5 sm:px-4">
+                  <li key={v.id} className="flex items-start gap-2.5 px-3 py-2.5 sm:px-4">
                     <VehicleIcon type={v.vehicleType} />
-                    <button
-                      type="button"
-                      onClick={() => copyText("plate-" + v.id, v.vehicleNumber)}
-                      className="min-w-0 flex-1 text-left"
-                      title="Copy vehicle number"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold tabular-nums tracking-wide text-brand">
-                          {v.vehicleNumber ? formatPlate(v.vehicleNumber) : "No number"}
-                        </span>
-                        <span
-                          className={
-                            "shrink-0 text-[11px] font-medium " +
-                            (v.stickerIssued ? "text-emerald-600" : "text-amber-600")
-                          }
-                        >
-                          સ્ટીકર: {v.stickerIssued ? "Yes" : "No"}
-                        </span>
-                      </div>
-                      {copied === "plate-" + v.id && (
-                        <div className="text-[10px] font-medium text-emerald-600">Number copied</div>
-                      )}
-                    </button>
+                    <div className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => copyText("plate-" + v.id, v.vehicleNumber)}
+                        className="w-full text-left"
+                        title="Copy vehicle number"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold tabular-nums tracking-wide text-brand">
+                            {v.vehicleNumber ? formatPlate(v.vehicleNumber) : "No number"}
+                          </span>
+                          <span
+                            className={
+                              "shrink-0 text-[11px] font-medium " +
+                              (v.stickerIssued ? "text-emerald-600" : "text-amber-600")
+                            }
+                          >
+                            સ્ટીકર: {v.stickerIssued ? "Yes" : "No"}
+                          </span>
+                        </div>
+                        {copied === "plate-" + v.id && (
+                          <div className="text-[10px] font-medium text-emerald-600">Number copied</div>
+                        )}
+                      </button>
+                      {v.notes?.trim() ? (
+                        <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-snug text-slate-500">
+                          {v.notes.trim()}
+                        </p>
+                      ) : null}
+                    </div>
                     {isSuperAdmin && (
                       <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
                         <button

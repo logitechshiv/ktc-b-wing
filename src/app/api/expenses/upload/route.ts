@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
+import { put } from "@vercel/blob";
 import { requireSuperAdmin } from "@/lib/require-super-admin";
 
 export const runtime = "nodejs";
@@ -19,11 +18,21 @@ const EXT: Record<string, string> = {
   "application/pdf": ".pdf",
 };
 
-/** POST /api/expenses/upload — Super Admin bill upload */
+/** POST /api/expenses/upload — Super Admin → Vercel Blob */
 export async function POST(request: Request) {
   try {
     const gate = await requireSuperAdmin();
     if (gate.error) return gate.error;
+
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "BLOB_READ_WRITE_TOKEN is not configured. Add it in .env.local / Vercel env.",
+        },
+        { status: 500 }
+      );
+    }
 
     const form = await request.formData();
     const file = form.get("file");
@@ -34,7 +43,7 @@ export async function POST(request: Request) {
 
     if (!ALLOWED.has(file.type)) {
       return NextResponse.json(
-        { success: false, message: "Only JPG, PNG or PDF files are allowed" },
+        { success: false, message: "Only JPG, JPEG, PNG or PDF files are allowed" },
         { status: 400 }
       );
     }
@@ -43,15 +52,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "File must be under 8 MB" }, { status: 400 });
     }
 
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const ext = EXT[file.type] || path.extname(file.name) || ".bin";
-    const filename = `expense-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
-    const dir = path.join(process.cwd(), "public", "uploads", "expenses");
-    await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, filename), bytes);
+    const ext = EXT[file.type] || ".bin";
+    const filename = `expenses/expense-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
 
-    const url = `/uploads/expenses/${filename}`;
-    return NextResponse.json({ success: true, url, message: "Bill uploaded" });
+    const blob = await put(filename, file, {
+      access: "public",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+      contentType: file.type,
+    });
+
+    return NextResponse.json({
+      success: true,
+      url: blob.url,
+      message: "Bill uploaded",
+    });
   } catch (error) {
     console.error("POST /api/expenses/upload error:", error);
     return NextResponse.json(

@@ -3,21 +3,19 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { inr } from "@/lib/format";
 import {
-  DEFAULT_EXPENSE_CATEGORIES,
   uploadExpenseBill,
+  type ExpenseCategoryRecord,
   type ExpenseInput,
-  type ExpenseMethod,
   type ExpensePaymentMethod,
   type ExpenseRecord,
 } from "@/lib/expenses-api";
-import type { PurposeRecord } from "@/lib/payment-purposes-api";
 import { formField, formSelect } from "@/lib/form-styles";
 
 interface Props {
   open: boolean;
   mode: "add" | "edit";
   initial?: ExpenseRecord | null;
-  purposes: PurposeRecord[];
+  categories: ExpenseCategoryRecord[];
   saving: boolean;
   error: string | null;
   onClose: () => void;
@@ -28,19 +26,15 @@ export default function ExpenseModal({
   open,
   mode,
   initial,
-  purposes,
+  categories,
   saving,
   error,
   onClose,
   onSubmit,
 }: Props) {
-  const [category, setCategory] = useState("Security");
-  const [customCategory, setCustomCategory] = useState("");
-  const [expenseTitle, setExpenseTitle] = useState("");
+  const [category, setCategory] = useState("");
   const [expenseTitleGujarati, setExpenseTitleGujarati] = useState("");
   const [amount, setAmount] = useState(0);
-  const [expenseMethod, setExpenseMethod] = useState<ExpenseMethod>("fund");
-  const [collectionPurposeId, setCollectionPurposeId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<ExpensePaymentMethod>("cash");
   const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [billImage, setBillImage] = useState("");
@@ -48,39 +42,27 @@ export default function ExpenseModal({
   const [localError, setLocalError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const activePurposes = purposes.filter((p) => p.isActive);
-  const isCustomCategory = category === "__custom__";
-
   useEffect(() => {
     if (!open) return;
     setLocalError(null);
     if (mode === "edit" && initial) {
-      const known = (DEFAULT_EXPENSE_CATEGORIES as readonly string[]).includes(initial.category);
-      setCategory(known ? initial.category : "__custom__");
-      setCustomCategory(known ? "" : initial.category);
-      setExpenseTitle(initial.expenseTitle);
+      setCategory(initial.category);
       setExpenseTitleGujarati(initial.expenseTitleGujarati);
       setAmount(initial.amount);
-      setExpenseMethod(initial.expenseMethod);
-      setCollectionPurposeId(initial.collectionPurposeId || "");
       setPaymentMethod(initial.paymentMethod);
       setExpenseDate(initial.expenseDate || new Date().toISOString().slice(0, 10));
       setBillImage(initial.billImage);
       setNotes(initial.notes);
     } else {
-      setCategory("Security");
-      setCustomCategory("");
-      setExpenseTitle("");
+      setCategory(categories[0]?.name || "");
       setExpenseTitleGujarati("");
       setAmount(0);
-      setExpenseMethod("fund");
-      setCollectionPurposeId("");
       setPaymentMethod("cash");
       setExpenseDate(new Date().toISOString().slice(0, 10));
       setBillImage("");
       setNotes("");
     }
-  }, [open, mode, initial]);
+  }, [open, mode, initial, categories]);
 
   if (!open) return null;
 
@@ -102,34 +84,23 @@ export default function ExpenseModal({
     e.preventDefault();
     setLocalError(null);
 
-    const finalCategory = isCustomCategory ? customCategory.trim() : category;
-    if (!finalCategory) {
+    if (!category.trim()) {
       setLocalError("Category is required");
       return;
     }
-    if (!expenseTitle.trim() && !expenseTitleGujarati.trim()) {
-      setLocalError("Expense Title is required");
+    if (!expenseTitleGujarati.trim()) {
+      setLocalError("Expense Title (Gujarati) is required");
       return;
     }
     if (!amount || amount <= 0) {
       setLocalError("Amount must be greater than 0");
       return;
     }
-    if (expenseMethod === "collection" && !collectionPurposeId) {
-      setLocalError("Purpose is required for collection expenses");
-      return;
-    }
-
-    const purpose = activePurposes.find((p) => p.id === collectionPurposeId);
 
     await onSubmit({
-      category: finalCategory,
-      expenseTitle: expenseTitle.trim(),
+      category: category.trim(),
       expenseTitleGujarati: expenseTitleGujarati.trim(),
       amount,
-      expenseMethod,
-      collectionPurposeId: expenseMethod === "collection" ? collectionPurposeId : null,
-      collectionPurposeName: expenseMethod === "collection" ? purpose?.title || "" : "",
       paymentMethod,
       expenseDate,
       billImage,
@@ -155,7 +126,7 @@ export default function ExpenseModal({
             <h2 className="text-lg font-bold text-navy">
               {mode === "add" ? "Add Expense" : "Edit Expense"}
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">Category, amount, method & bill</p>
+            <p className="mt-0.5 text-xs text-slate-500">Category, amount, payment & bill</p>
           </div>
           <button type="button" onClick={onClose} className="text-sm font-medium text-slate-400 hover:text-navy">
             Close
@@ -165,31 +136,24 @@ export default function ExpenseModal({
         <div className="space-y-4">
           <label className="block text-xs font-semibold text-slate-600">
             Category
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className={fieldSelect} required>
-              {DEFAULT_EXPENSE_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className={fieldSelect}
+              required
+            >
+              <option value="">Select category…</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
                 </option>
               ))}
-              <option value="__custom__">Custom Category…</option>
+              {mode === "edit" &&
+                initial?.category &&
+                !categories.some((c) => c.name === initial.category) && (
+                  <option value={initial.category}>{initial.category}</option>
+                )}
             </select>
-          </label>
-
-          {isCustomCategory && (
-            <label className="block text-xs font-semibold text-slate-600">
-              Custom Category Name
-              <input
-                value={customCategory}
-                onChange={(e) => setCustomCategory(e.target.value)}
-                className={field}
-                required
-              />
-            </label>
-          )}
-
-          <label className="block text-xs font-semibold text-slate-600">
-            Expense Title (English)
-            <input value={expenseTitle} onChange={(e) => setExpenseTitle(e.target.value)} className={field} />
           </label>
 
           <label className="block text-xs font-semibold text-slate-600">
@@ -198,6 +162,7 @@ export default function ExpenseModal({
               value={expenseTitleGujarati}
               onChange={(e) => setExpenseTitleGujarati(e.target.value)}
               className={field}
+              required
             />
           </label>
 
@@ -212,59 +177,6 @@ export default function ExpenseModal({
               required
             />
           </label>
-
-          <div>
-            <div className="text-xs font-semibold text-slate-600">Expense Method</div>
-            <div className="mt-1 space-y-2">
-              {(
-                [
-                  ["fund", "Fund માંથી ખર્ચ કરવામાં આવ્યો"],
-                  ["collection", "ઉઘરાણીમાંથી ખર્ચ કરવામાં આવ્યો"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setExpenseMethod(value)}
-                  className={
-                    "flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition " +
-                    (expenseMethod === value
-                      ? "border-brand bg-brand/5 text-brand"
-                      : "border-slate-200 bg-white text-slate-600")
-                  }
-                >
-                  <span
-                    className={
-                      "flex h-4 w-4 items-center justify-center rounded-full border " +
-                      (expenseMethod === value ? "border-brand" : "border-slate-300")
-                    }
-                  >
-                    {expenseMethod === value && <span className="h-2 w-2 rounded-full bg-brand" />}
-                  </span>
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {expenseMethod === "collection" && (
-            <label className="block text-xs font-semibold text-slate-600">
-              Purpose
-              <select
-                value={collectionPurposeId}
-                onChange={(e) => setCollectionPurposeId(e.target.value)}
-                className={fieldSelect}
-                required
-              >
-                <option value="">Select purpose…</option>
-                {activePurposes.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title} ({inr(p.amount)})
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
 
           <label className="block text-xs font-semibold text-slate-600">
             Expense Date
@@ -299,7 +211,7 @@ export default function ExpenseModal({
           </div>
 
           <label className="block text-xs font-semibold text-slate-600">
-            Bill Upload (JPG, PNG, PDF)
+            Bill Upload (JPG, JPEG, PNG, PDF)
             <input
               type="file"
               accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
@@ -314,7 +226,7 @@ export default function ExpenseModal({
                 rel="noopener noreferrer"
                 className="mt-1 inline-flex text-[11px] font-semibold text-brand hover:underline"
               >
-                View uploaded bill
+                View / open document
               </a>
             )}
           </label>

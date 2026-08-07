@@ -1,18 +1,18 @@
-import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/expense-constants";
-
-export type ExpenseMethod = "fund" | "collection";
 export type ExpensePaymentMethod = "cash" | "bank" | "upi" | "cheque";
+
+export interface ExpenseCategoryRecord {
+  id: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface ExpenseRecord {
   id: string;
   category: string;
-  expenseTitle: string;
   expenseTitleGujarati: string;
   amount: number;
   displayOrder: number;
-  expenseMethod: ExpenseMethod;
-  collectionPurposeId: string | null;
-  collectionPurposeName: string;
   paymentMethod: ExpensePaymentMethod;
   expenseDate: string;
   billImage: string;
@@ -25,12 +25,8 @@ export interface ExpenseRecord {
 
 export interface ExpenseInput {
   category: string;
-  expenseTitle: string;
-  expenseTitleGujarati?: string;
+  expenseTitleGujarati: string;
   amount: number;
-  expenseMethod: ExpenseMethod;
-  collectionPurposeId?: string | null;
-  collectionPurposeName?: string;
   paymentMethod: ExpensePaymentMethod;
   expenseDate?: string;
   billImage?: string;
@@ -43,19 +39,14 @@ export interface ExpenseListParams {
   category?: string | "all";
 }
 
-export { DEFAULT_EXPENSE_CATEGORIES };
-
 function toExpense(raw: Record<string, unknown>): ExpenseRecord {
   return {
     id: String(raw.id ?? raw._id),
     category: String(raw.category ?? ""),
-    expenseTitle: String(raw.expenseTitle ?? ""),
-    expenseTitleGujarati: String(raw.expenseTitleGujarati ?? ""),
+    expenseTitleGujarati:
+      String(raw.expenseTitleGujarati ?? "").trim() || String(raw.expenseTitle ?? "").trim(),
     amount: Number(raw.amount) || 0,
     displayOrder: Number(raw.displayOrder) || 0,
-    expenseMethod: (raw.expenseMethod as ExpenseMethod) || "fund",
-    collectionPurposeId: raw.collectionPurposeId ? String(raw.collectionPurposeId) : null,
-    collectionPurposeName: String(raw.collectionPurposeName ?? ""),
     paymentMethod: (raw.paymentMethod as ExpensePaymentMethod) || "cash",
     expenseDate: raw.expenseDate ? String(raw.expenseDate).slice(0, 10) : "",
     billImage: String(raw.billImage ?? ""),
@@ -67,12 +58,63 @@ function toExpense(raw: Record<string, unknown>): ExpenseRecord {
   };
 }
 
+function toCategory(raw: Record<string, unknown>): ExpenseCategoryRecord {
+  return {
+    id: String(raw.id ?? raw._id),
+    name: String(raw.name ?? ""),
+    createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
+    updatedAt: raw.updatedAt ? String(raw.updatedAt) : undefined,
+  };
+}
+
 async function parseJson(res: Response) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.success === false) {
     throw new Error(data.message || `Request failed (${res.status})`);
   }
   return data;
+}
+
+export async function readExpenseCategories(): Promise<ExpenseCategoryRecord[]> {
+  const res = await fetch("/api/expense-categories", { cache: "no-store" });
+  const data = await parseJson(res);
+  return ((data.categories as Record<string, unknown>[]) || []).map(toCategory);
+}
+
+export async function createExpenseCategory(name: string): Promise<ExpenseCategoryRecord> {
+  const res = await fetch("/api/expense-categories", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    cache: "no-store",
+    body: JSON.stringify({ name }),
+  });
+  const data = await parseJson(res);
+  return toCategory(data.category);
+}
+
+export async function updateExpenseCategory(
+  id: string,
+  name: string
+): Promise<ExpenseCategoryRecord> {
+  const res = await fetch(`/api/expense-categories/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    cache: "no-store",
+    body: JSON.stringify({ name }),
+  });
+  const data = await parseJson(res);
+  return toCategory(data.category);
+}
+
+export async function deleteExpenseCategory(id: string): Promise<void> {
+  const res = await fetch(`/api/expense-categories/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  await parseJson(res);
 }
 
 export async function readExpenses(params: ExpenseListParams = {}): Promise<{

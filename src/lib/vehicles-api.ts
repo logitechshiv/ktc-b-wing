@@ -1,4 +1,4 @@
-export type VehicleType = "car" | "bike" | "scooter" | "auto" | "other";
+export type VehicleType = "car" | "bike" | "auto";
 export type VehicleOwnerType = "owner" | "renter";
 
 export interface VehicleRecord {
@@ -25,6 +25,8 @@ export interface VehicleRecord {
 export interface VehicleSummary {
   total: number;
   cars: number;
+  bikes: number;
+  autos: number;
   twoWheel: number;
   noSticker: number;
 }
@@ -91,7 +93,9 @@ function toVehicle(raw: Record<string, unknown>): VehicleRecord {
     vehicleOwnerType: String(raw.vehicleOwnerType ?? "owner").toLowerCase() === "renter" ? "renter" : "owner",
     ownerName: String(raw.ownerName ?? ""),
     ownerMobile: String(raw.ownerMobile ?? ""),
-    vehicleType: (raw.vehicleType as VehicleType) || "other",
+    vehicleType: (["car", "bike", "auto"].includes(String(raw.vehicleType))
+      ? (raw.vehicleType as VehicleType)
+      : "car"),
     vehicleNumber: String(raw.vehicleNumber ?? ""),
     stickerIssued: !!raw.stickerIssued,
     stickerNumber: String(raw.stickerNumber ?? ""),
@@ -144,7 +148,14 @@ export async function readVehicles(params: VehicleListParams = {}): Promise<Vehi
         vehicles,
       };
     }),
-    summary: data.summary as VehicleSummary,
+    summary: {
+      total: Number((data.summary as VehicleSummary)?.total) || 0,
+      cars: Number((data.summary as VehicleSummary)?.cars) || 0,
+      bikes: Number((data.summary as VehicleSummary)?.bikes) || 0,
+      autos: Number((data.summary as VehicleSummary)?.autos) || 0,
+      twoWheel: Number((data.summary as VehicleSummary)?.twoWheel) || 0,
+      noSticker: Number((data.summary as VehicleSummary)?.noSticker) || 0,
+    },
   };
 }
 

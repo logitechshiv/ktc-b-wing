@@ -215,9 +215,29 @@ export function computeVehicleSummary(
 ) {
   const total = vehicles.length;
   const cars = vehicles.filter((v) => v.vehicleType === "car").length;
-  const twoWheel = vehicles.filter((v) =>
-    ["bike", "scooter"].includes(v.vehicleType)
-  ).length;
+  const bikes = vehicles.filter((v) => v.vehicleType === "bike").length;
+  const autos = vehicles.filter((v) => v.vehicleType === "auto").length;
+  const twoWheel = bikes;
   const noSticker = vehicles.filter((v) => !v.stickerIssued).length;
-  return { total, cars, twoWheel, noSticker };
+  return { total, cars, bikes, autos, twoWheel, noSticker };
+}
+
+/** Sort order: Car → Bike → Auto, then flat number ascending. */
+export function vehicleTypeSortRank(type: string): number {
+  const t = String(type || "").toLowerCase();
+  if (t === "car") return 0;
+  if (t === "bike") return 1;
+  if (t === "auto") return 2;
+  return 3;
+}
+
+export function compareVehiclesByTypeThenFlat(
+  a: { vehicleType: string; flatNumber: string },
+  b: { vehicleType: string; flatNumber: string }
+) {
+  return (
+    vehicleTypeSortRank(a.vehicleType) - vehicleTypeSortRank(b.vehicleType) ||
+    Number(a.flatNumber) - Number(b.flatNumber) ||
+    String(a.flatNumber).localeCompare(String(b.flatNumber))
+  );
 }

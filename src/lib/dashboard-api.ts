@@ -6,12 +6,9 @@ export interface ExpenseByCategory {
 export interface DashboardRecentExpense {
   id: string;
   category: string;
-  expenseTitle: string;
   expenseTitleGujarati: string;
   amount: number;
   displayOrder: number;
-  expenseMethod: string;
-  collectionPurposeName: string;
   paymentMethod: string;
   expenseDate: string;
   billImage: string;
@@ -88,12 +85,11 @@ export async function readDashboard(): Promise<DashboardStats> {
       ? (data.recentExpenses as DashboardRecentExpense[]).map((row) => ({
           id: String(row.id || ""),
           category: String(row.category || ""),
-          expenseTitle: String(row.expenseTitle || ""),
-          expenseTitleGujarati: String(row.expenseTitleGujarati || ""),
+          expenseTitleGujarati:
+            String(row.expenseTitleGujarati || "").trim() ||
+            String((row as { expenseTitle?: string }).expenseTitle || "").trim(),
           amount: Number(row.amount) || 0,
           displayOrder: Number(row.displayOrder) || 0,
-          expenseMethod: String(row.expenseMethod || ""),
-          collectionPurposeName: String(row.collectionPurposeName || ""),
           paymentMethod: String(row.paymentMethod || ""),
           expenseDate: String(row.expenseDate || "").slice(0, 10),
           billImage: String(row.billImage || ""),

@@ -1,6 +1,6 @@
 import mongoose, { Schema, models, model, type InferSchemaType, type Model } from "mongoose";
 
-export const VEHICLE_TYPES = ["car", "bike", "scooter", "auto", "other"] as const;
+export const VEHICLE_TYPES = ["car", "bike", "auto"] as const;
 export type DbVehicleType = (typeof VEHICLE_TYPES)[number];
 
 export const VEHICLE_OWNER_TYPES = ["owner", "renter"] as const;

@@ -30,12 +30,9 @@ export interface DashboardStats {
   recentExpenses: Array<{
     id: string;
     category: string;
-    expenseTitle: string;
     expenseTitleGujarati: string;
     amount: number;
     displayOrder: number;
-    expenseMethod: string;
-    collectionPurposeName: string;
     paymentMethod: string;
     expenseDate: string;
     billImage: string;
@@ -160,12 +157,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       return {
         id: s.id,
         category: s.category,
-        expenseTitle: s.expenseTitle,
         expenseTitleGujarati: s.expenseTitleGujarati,
         amount: s.amount,
         displayOrder: s.displayOrder,
-        expenseMethod: s.expenseMethod,
-        collectionPurposeName: s.collectionPurposeName,
         paymentMethod: s.paymentMethod,
         expenseDate: s.expenseDate
           ? new Date(s.expenseDate).toISOString().slice(0, 10)
