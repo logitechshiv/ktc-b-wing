@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { inr, fmtDateDMY } from "@/lib/format";
 import type {
   PurposeDetails,
@@ -62,6 +62,17 @@ function matchesSearch(q: string, flatNumber: string, ownerName?: string | null)
   return hay.includes(q);
 }
 
+export type PendingScopeFilter = "all" | "sold" | "builder";
+
+function isSoldPending(row: PurposePendingFlat) {
+  const status = String(row.flatStatus || "");
+  return status !== "available" && flatHasOwner(row.ownerName, row.hasOwner);
+}
+
+function isBuilderPending(row: PurposePendingFlat) {
+  return row.flatStatus === "available";
+}
+
 interface Props {
   details: PurposeDetails | null;
   loading: boolean;
@@ -89,6 +100,7 @@ export default function PurposeDetailsPanel({
   hideHeader = false,
   onAddCollection,
 }: Props) {
+  const [pendingScope, setPendingScope] = useState<PendingScopeFilter>("all");
   const q = searchQuery.trim().toLowerCase();
   const showPaid = statusFilter === "paid" || statusFilter === "all";
   const showPending = statusFilter === "pending" || statusFilter === "all";
@@ -109,11 +121,20 @@ export default function PurposeDetailsPanel({
     return details.pending.filter((row) => {
       if (row.pendingAmount <= 0) return false;
       if (!matchesSearch(q, row.flatNumber, row.ownerName || "builder")) return false;
-      // Unsold flats (builder) + sold/rent with owner
-      if (row.flatStatus === "available") return true;
-      return flatHasOwner(row.ownerName, row.hasOwner);
+
+      if (pendingScope === "sold") return isSoldPending(row);
+      if (pendingScope === "builder") return isBuilderPending(row);
+
+      // All — unsold (builder) + sold/rent with owner
+      if (isBuilderPending(row)) return true;
+      return isSoldPending(row);
     });
-  }, [details, q]);
+  }, [details, q, pendingScope]);
+
+  const pendingSummaryAmount = useMemo(
+    () => pending.reduce((sum, row) => sum + (Number(row.pendingAmount) || 0), 0),
+    [pending]
+  );
 
   if (!details && !loading && !error) return null;
 
@@ -269,12 +290,26 @@ export default function PurposeDetailsPanel({
 
       {details && !loading && showPending && (
         <section className="space-y-2">
-          <div className="flex items-end justify-between gap-2 px-0.5">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-rose-700 dark:text-rose-300">
-              બાકી (Pending)
-            </h3>
+          <div className="flex flex-wrap items-end justify-between gap-2 px-0.5">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-rose-700 dark:text-rose-300">
+                બાકી (Pending)
+              </h3>
+              <label className="inline-flex items-center">
+                <span className="sr-only">Pending filter</span>
+                <select
+                  value={pendingScope}
+                  onChange={(e) => setPendingScope(e.target.value as PendingScopeFilter)}
+                  className="h-7 rounded-lg border border-slate-200 bg-white px-2 pr-6 text-[11px] font-medium text-slate-600 outline-none focus:border-brand dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                >
+                  <option value="all">All</option>
+                  <option value="sold">Sold Flats</option>
+                  <option value="builder">Builder (Unsold)</option>
+                </select>
+              </label>
+            </div>
             <div className="text-right text-[11px] text-slate-400">
-              {pending.length} pending · {inr(details.summary.totalPending)}
+              {pending.length} pending · {inr(pendingSummaryAmount)}
             </div>
           </div>
           <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
