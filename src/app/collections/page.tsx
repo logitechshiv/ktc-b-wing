@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Building2, Home } from "lucide-react";
 import { inr } from "@/lib/format";
 import type { SafeUser } from "@/lib/auth-client";
 import {
@@ -16,6 +17,10 @@ import {
   type PurposeUnsoldPendingFlat,
 } from "@/lib/payment-purposes-api";
 import {
+  collectionScopeShortLabel,
+  normalizeCollectionScope,
+} from "@/lib/collection-scope";
+import {
   createBuilderPayment,
   createPaymentsBulk,
   type CollectPersonOption,
@@ -28,10 +33,10 @@ import PurposeModal from "@/components/collections/PurposeModal";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import PurposeDetailsPanel from "@/components/collections/PurposeDetailsPanel";
 import PurposeSummaryModal from "@/components/collections/PurposeSummaryModal";
+import PurposeScopeSelect from "@/components/collections/PurposeScopeSelect";
 import CollectionModal, {
   type CollectionFlatTab,
 } from "@/components/collections/CollectionModal";
-import { formSelectFilter } from "@/lib/form-styles";
 
 function shortPurposeTitle(title: string) {
   return title
@@ -281,6 +286,10 @@ export default function CollectionsPage() {
     const purpose =
       purposes.find((p) => p.id === formPurposeId) ||
       (purposeDetails?.purpose.id === formPurposeId ? purposeDetails.purpose : null);
+    if (normalizeCollectionScope(purpose?.collectionScope) !== "all") {
+      setFormTab("sold");
+      return;
+    }
     const perFlat = purpose?.amountPerFlat ?? purpose?.amount ?? 0;
     if (formUnsoldPending.length > 0 && perFlat > 0) {
       setFormAmount(formUnsoldPending.length * perFlat);
@@ -520,7 +529,6 @@ export default function CollectionsPage() {
   }
 
   function openCollectForm(lockedPurposeId?: string | null) {
-    setFormTab("sold");
     setFormSelectedKeys([]);
     setFormPendingFlats([]);
     setFormUnsoldPending([]);
@@ -539,10 +547,12 @@ export default function CollectionsPage() {
       setFormPurposeId(lockedId);
       setFormAmount(selected?.amountPerFlat ?? selected?.amount ?? 0);
       setFormPurposeLocked(true);
+      setFormTab("sold");
     } else {
       setFormPurposeId("");
       setFormAmount(0);
       setFormPurposeLocked(false);
+      setFormTab("sold");
     }
     setShowForm(true);
   }
@@ -560,11 +570,16 @@ export default function CollectionsPage() {
   }
 
   function handleFormTabChange(tab: CollectionFlatTab) {
-    setFormTab(tab);
-    setError(null);
     const purpose =
       purposes.find((p) => p.id === formPurposeId) ||
       (purposeDetails?.purpose.id === formPurposeId ? purposeDetails.purpose : null);
+    if (tab === "unsold" && normalizeCollectionScope(purpose?.collectionScope) !== "all") {
+      setFormTab("sold");
+      setError("This purpose applies to Sold Flats Only");
+      return;
+    }
+    setFormTab(tab);
+    setError(null);
     const perFlat = purpose?.amountPerFlat ?? purpose?.amount ?? 0;
     if (tab === "sold") {
       setFormAmount(perFlat);
@@ -633,15 +648,19 @@ export default function CollectionsPage() {
 
   async function saveBuilderCollection() {
     if (!formPurposeId || formAmount <= 0 || formUnsoldAllPaid) return;
-    if (!formBuilderName.trim()) {
-      setError("Builder Name is required");
-      return;
-    }
     const purpose =
       purposes.find((p) => p.id === formPurposeId) ||
       (purposeDetails?.purpose.id === formPurposeId ? purposeDetails.purpose : null);
     if (!purpose) {
       setError("Select a valid purpose");
+      return;
+    }
+    if (normalizeCollectionScope(purpose.collectionScope) !== "all") {
+      setError("This purpose applies to Sold Flats Only. Builder/Unsold collection is not allowed.");
+      return;
+    }
+    if (!formBuilderName.trim()) {
+      setError("Builder Name is required");
       return;
     }
 
@@ -744,31 +763,15 @@ export default function CollectionsPage() {
             />
           </label>
 
-          <label className="block">
+          <div className="block">
             <span className="mb-1 block text-[11px] font-medium text-slate-500">Purpose (Round)</span>
-            <select
+            <PurposeScopeSelect
+              purposes={purposes}
               value={purposeFilterId || firstPurpose?.id || ""}
-              onChange={(e) => setPurposeFilterId(e.target.value)}
               disabled={purposeReady && purposes.length === 0}
-              className={formSelectFilter}
-            >
-              {purposes.length === 0 ? (
-                <option value="">No Purpose available</option>
-              ) : (
-                [...purposes]
-                  .sort((a, b) => {
-                    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-                    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-                    return ta - tb;
-                  })
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title}
-                    </option>
-                  ))
-              )}
-            </select>
-          </label>
+              onChange={setPurposeFilterId}
+            />
+          </div>
 
           <div className="flex items-end">
             <button
@@ -782,18 +785,27 @@ export default function CollectionsPage() {
           </div>
         </div>
 
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-medium text-slate-500">Payment History</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as "paid" | "pending")}
-              className={formSelectFilter}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(
+            [
+              { id: "paid" as const, label: "જમા થયેલ (Paid)" },
+              { id: "pending" as const, label: "બાકી (Pending)" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setStatusFilter(opt.id)}
+              className={
+                "rounded-full border px-3 py-1 text-xs font-medium transition " +
+                (statusFilter === opt.id
+                  ? "border-brand bg-brand text-white"
+                  : "border-slate-200 bg-white text-slate-500")
+              }
             >
-              <option value="paid">જમા થયેલ (Paid)</option>
-              <option value="pending">બાકી (Pending)</option>
-            </select>
-          </label>
+              {opt.label}
+            </button>
+          ))}
         </div>
 
         {statusFilter === "paid" && (
@@ -820,6 +832,21 @@ export default function CollectionsPage() {
           {selectedPurpose && selectedPurposeStat ? (
             <li className="space-y-2.5">
               {/* Screenshot layout: pending line → all pending flat badges → full summary */}
+              {(() => {
+                const scopeSummary =
+                  filterDetails?.purpose.id === selectedPurposeId
+                    ? filterDetails.summary
+                    : null;
+                const total =
+                  scopeSummary?.totalFlats ?? selectedPurposeStat.total;
+                const collected =
+                  scopeSummary?.paidFlats ?? selectedPurposeStat.collected;
+                const pending =
+                  scopeSummary?.pendingFlats ?? selectedPurposeStat.pending;
+                const pendingAmount =
+                  scopeSummary?.totalPending ?? selectedPurposeStat.pendingAmount;
+                return (
+                  <>
               {filterDetailsLoading && pendingFlatsForBadges.length === 0 ? (
                 <p className="text-[11px] text-slate-400">Loading pending flats…</p>
               ) : pendingFlatsForBadges.length > 0 ? (
@@ -885,21 +912,21 @@ export default function CollectionsPage() {
                   <span className="font-semibold text-navy">
                     {shortPurposeTitle(selectedPurpose.title)}:
                   </span>{" "}
-                  {selectedPurposeStat.total} ફ્લેટ માંથી{" "}
+                  {total} ફ્લેટ માંથી{" "}
                   <span className="font-semibold text-emerald-600">
-                    {selectedPurposeStat.collected}
+                    {collected}
                   </span>{" "}
                   ફ્લેટનું કલેક્શન
-                  {selectedPurposeStat.collected === 0 ? " આવ્યું છે" : " આવી ગયું છે"}
-                  {selectedPurposeStat.pending > 0 ? (
+                  {collected === 0 ? " આવ્યું છે" : " આવી ગયું છે"}
+                  {pending > 0 ? (
                     <>
                       ,{" "}
                       <span className="font-semibold text-amber-600">
-                        {selectedPurposeStat.pending}
+                        {pending}
                       </span>{" "}
                       ફ્લેટના{" "}
                       <span className="font-semibold text-amber-600">
-                        {inr(selectedPurposeStat.pendingAmount)}
+                        {inr(pendingAmount)}
                       </span>{" "}
                       બાકી છે
                     </>
@@ -910,6 +937,9 @@ export default function CollectionsPage() {
                   )}
                 </p>
               </div>
+                  </>
+                );
+              })()}
             </li>
           ) : purposes.length === 0 ? (
             <li className="text-xs text-slate-400">No payment purposes yet.</li>
@@ -975,7 +1005,27 @@ export default function CollectionsPage() {
                   className="min-w-0 flex-1 text-left"
                   aria-expanded={isOpen}
                 >
-                  <div className="text-sm font-bold text-navy">{purpose.title}</div>
+                  <div className="flex items-center gap-1.5">
+                    {normalizeCollectionScope(purpose.collectionScope) === "all" ? (
+                      <Building2
+                        className="h-3.5 w-3.5 shrink-0 text-slate-400"
+                        strokeWidth={2.25}
+                        aria-hidden
+                      />
+                    ) : (
+                      <Home
+                        className="h-3.5 w-3.5 shrink-0 text-slate-400"
+                        strokeWidth={2.25}
+                        aria-hidden
+                      />
+                    )}
+                    <div className="truncate text-sm font-bold text-navy">{purpose.title}</div>
+                  </div>
+                  <p className="mt-0.5 pl-5 text-[10px] font-medium text-slate-400">
+                    {collectionScopeShortLabel(
+                      normalizeCollectionScope(purpose.collectionScope)
+                    )}
+                  </p>
                   {!!purpose.description.trim() && (
                     <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
                       {purpose.description}
@@ -1121,7 +1171,14 @@ export default function CollectionsPage() {
           setFormPurposeId(id);
           setFormSelectedKeys([]);
           const p = purposes.find((x) => x.id === id);
-          if (p) setFormAmount(p.amountPerFlat ?? p.amount);
+          if (p) {
+            setFormAmount(p.amountPerFlat ?? p.amount);
+            if (normalizeCollectionScope(p.collectionScope) !== "all") {
+              setFormTab("sold");
+            }
+          } else {
+            setFormTab("sold");
+          }
         }}
         onSelectedKeysChange={setFormSelectedKeys}
         onAmountChange={setFormAmount}

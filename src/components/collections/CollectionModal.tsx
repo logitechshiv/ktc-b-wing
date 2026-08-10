@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { inr } from "@/lib/format";
 import type { PurposeRecord, PurposeUnsoldPendingFlat } from "@/lib/payment-purposes-api";
 import type { CollectPersonOption, PaymentMode } from "@/lib/payments-api";
+import { normalizeCollectionScope } from "@/lib/collection-scope";
 import { formSelect } from "@/lib/form-styles";
 
 export type CollectionFlatTab = "sold" | "unsold";
@@ -101,7 +102,14 @@ export default function CollectionModal({
     ? purposes.filter((p) => p.id === formPurposeId)
     : searchablePurposes;
 
-  const isSold = formTab === "sold";
+  const selectedPurpose =
+    purposes.find((p) => p.id === formPurposeId) ||
+    purposeOptions.find((p) => p.id === formPurposeId) ||
+    null;
+  const collectionScope = normalizeCollectionScope(selectedPurpose?.collectionScope);
+  const allowUnsold = collectionScope === "all";
+
+  const isSold = formTab === "sold" || !allowUnsold;
   const soldBlocked = !formPurposeId || formAllPaid || formPendingLoading;
   const unsoldBlocked = !formPurposeId || formUnsoldAllPaid || formPendingLoading;
   const canSaveSold =
@@ -109,6 +117,7 @@ export default function CollectionModal({
   const canSaveUnsold =
     !formSaving &&
     !!formPurposeId &&
+    allowUnsold &&
     !formUnsoldAllPaid &&
     !!formBuilderName.trim() &&
     formAmount > 0 &&
@@ -167,32 +176,39 @@ export default function CollectionModal({
           </button>
         </div>
 
-        <div className="mb-4 grid grid-cols-2 gap-2">
-          {(
-            [
-              { id: "sold" as const, label: "Sold Flats" },
-              { id: "unsold" as const, label: "Unsold Flats (Builder)" },
-            ] as const
-          ).map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              disabled={formSaving}
-              onClick={() => onTabChange(tab.id)}
-              className={
-                "rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition " +
-                (formTab === tab.id
-                  ? "border-brand bg-brand/5 text-brand"
-                  : "border-slate-200 text-slate-600 hover:bg-slate-50")
-              }
-            >
-              <span className="mr-1.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-current text-[9px]">
-                {formTab === tab.id ? "●" : "○"}
-              </span>
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {allowUnsold ? (
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            {(
+              [
+                { id: "sold" as const, label: "Sold Flats" },
+                { id: "unsold" as const, label: "Unsold Flats (Builder)" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                disabled={formSaving}
+                onClick={() => onTabChange(tab.id)}
+                className={
+                  "rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition " +
+                  (formTab === tab.id
+                    ? "border-brand bg-brand/5 text-brand"
+                    : "border-slate-200 text-slate-600 hover:bg-slate-50")
+                }
+              >
+                <span className="mr-1.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-current text-[9px]">
+                  {formTab === tab.id ? "●" : "○"}
+                </span>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="mb-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+            This purpose applies to <span className="font-semibold text-navy">Sold Flats Only</span>
+            {" — "}Owner / Renter collection.
+          </p>
+        )}
 
         <div className="space-y-3">
           <label className="block text-xs font-semibold text-slate-600">
@@ -219,6 +235,7 @@ export default function CollectionModal({
               {!formPurposeLocked && <option value="">Select purpose…</option>}
               {purposeOptions.map((p) => (
                 <option key={p.id} value={p.id}>
+                  {normalizeCollectionScope(p.collectionScope) === "all" ? "All · " : "Sold · "}
                   {p.title} ({inr(p.amountPerFlat ?? p.amount)})
                 </option>
               ))}

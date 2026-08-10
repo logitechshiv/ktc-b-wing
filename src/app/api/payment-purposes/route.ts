@@ -18,9 +18,30 @@ export async function GET(request: Request) {
     if (activeOnly) filter.isActive = true;
 
     const docs = await PaymentPurpose.find(filter).sort({ createdAt: -1 }).lean();
+
+    // Backfill missing collectionScope for legacy documents (safe default: sold)
+    const missingScopeIds = docs
+      .filter((d) => !(d as { collectionScope?: string }).collectionScope)
+      .map((d) => d._id);
+    if (missingScopeIds.length > 0) {
+      await PaymentPurpose.updateMany(
+        { _id: { $in: missingScopeIds } },
+        { $set: { collectionScope: "sold" } }
+      );
+      for (const d of docs) {
+        if (!(d as { collectionScope?: string }).collectionScope) {
+          (d as { collectionScope?: string }).collectionScope = "sold";
+        }
+      }
+    }
+
     const purposes = docs.map((d) => serializePurpose(d as never));
     const stats = await getPurposeProgressStats(
-      purposes.map((p) => ({ id: p.id, amount: p.amount }))
+      purposes.map((p) => ({
+        id: p.id,
+        amount: p.amount,
+        collectionScope: p.collectionScope,
+      }))
     );
 
     return NextResponse.json({

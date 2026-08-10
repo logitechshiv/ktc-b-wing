@@ -2,7 +2,8 @@ import mongoose from "mongoose";
 import Payment from "@/models/Payment";
 import PaymentPurpose from "@/models/PaymentPurpose";
 import Flat from "@/models/Flat";
-import { purposeAmountPerFlat, serializePayment, serializePurpose } from "@/lib/payment-utils";
+import { purposeAmountPerFlat, serializePurpose, serializePayment } from "@/lib/payment-utils";
+import { normalizeCollectionScope } from "@/lib/collection-scope";
 import { PAYMENT_MODES, type DbPaymentMode } from "@/models/Payment";
 
 export type CollectionStatusFilter = "all" | "paid" | "pending";
@@ -12,12 +13,26 @@ export async function countTotalFlats(): Promise<number> {
   return Flat.countDocuments({});
 }
 
-/** Flats that can pay: sold + non-empty owner name. */
+/** Flats that can pay for sold-only purposes: sold/rent + non-empty owner name. */
 export async function countPayableFlats(): Promise<number> {
   return Flat.countDocuments({
     status: { $in: ["sold", "rent"] },
     ownerName: { $exists: true, $nin: [null, ""] },
   });
+}
+
+function isSoldCollectableFlat(flat: {
+  status?: string | null;
+  ownerName?: string | null;
+}): boolean {
+  const status = String(flat.status || "");
+  const isSold = status === "sold" || status === "rent";
+  const hasOwner = !!(flat.ownerName || "").trim();
+  return isSold && hasOwner;
+}
+
+function isUnsoldFlat(flat: { status?: string | null }): boolean {
+  return String(flat.status || "") === "available";
 }
 
 export interface PurposeProgressStat {
@@ -32,17 +47,26 @@ export interface PurposeProgressStat {
 
 /**
  * Per-purpose progress for the summary line.
- * total = all flats in society
- * collected = distinct paid flats for the purpose
- * pending = total − collected
- * pendingAmount = pending × amountPerFlat
+ * total / pending respect each purpose's collectionScope.
  */
 export async function getPurposeProgressStats(
-  purposes: Array<{ id: string; amount: number }>
+  purposes: Array<{ id: string; amount: number; collectionScope?: string }>
 ): Promise<PurposeProgressStat[]> {
   if (purposes.length === 0) return [];
 
-  const totalFlats = await countTotalFlats();
+  const [totalFlats, payableFlatDocs] = await Promise.all([
+    countTotalFlats(),
+    Flat.find({
+      status: { $in: ["sold", "rent"] },
+      ownerName: { $exists: true, $nin: [null, ""] },
+    })
+      .select("flatNumber")
+      .lean(),
+  ]);
+
+  const payableFlatNumbers = new Set(payableFlatDocs.map((f) => String(f.flatNumber)));
+  const soldFlatCount = payableFlatDocs.length;
+
   const ids = purposes
     .map((p) => p.id)
     .filter((id) => mongoose.Types.ObjectId.isValid(id))
@@ -66,21 +90,25 @@ export async function getPurposeProgressStats(
     paidAgg.map((row) => [
       String(row._id),
       {
-        paidFlats: (row.paidFlats as string[]).length,
+        paidFlatNumbers: (row.paidFlats as string[]).map(String),
         collectedAmount: Number(row.collectedAmount) || 0,
       },
     ])
   );
 
   return purposes.map((p) => {
-    const stats = paidMap.get(p.id) || { paidFlats: 0, collectedAmount: 0 };
-    const collected = stats.paidFlats;
-    const pending = Math.max(0, totalFlats - collected);
-    const collectionPercent =
-      totalFlats > 0 ? Math.round((collected / totalFlats) * 100) : 0;
+    const scope = normalizeCollectionScope(p.collectionScope);
+    const stats = paidMap.get(p.id) || { paidFlatNumbers: [] as string[], collectedAmount: 0 };
+    const total = scope === "all" ? totalFlats : soldFlatCount;
+    const collected =
+      scope === "all"
+        ? stats.paidFlatNumbers.length
+        : stats.paidFlatNumbers.filter((n) => payableFlatNumbers.has(n)).length;
+    const pending = Math.max(0, total - collected);
+    const collectionPercent = total > 0 ? Math.round((collected / total) * 100) : 0;
     return {
       purposeId: p.id,
-      total: totalFlats,
+      total,
       collected,
       pending,
       pendingAmount: pending * (p.amount || 0),
@@ -135,13 +163,16 @@ export interface PurposeDetailsResult {
   }>;
 }
 
-/** Paid / pending breakdown for one purpose (round). */
+/** Paid / pending breakdown for one purpose (round), scoped by collectionScope. */
 export async function getPurposeDetails(purposeId: string): Promise<PurposeDetailsResult | null> {
   if (!mongoose.Types.ObjectId.isValid(purposeId)) return null;
 
   const purpose = await PaymentPurpose.findById(purposeId).lean();
   if (!purpose) return null;
 
+  const scope = normalizeCollectionScope(
+    (purpose as { collectionScope?: string }).collectionScope
+  );
   const oid = purpose._id;
   const [allFlats, paymentDocs] = await Promise.all([
     Flat.find({}).sort({ floorNumber: 1, flatNumber: 1 }).lean(),
@@ -161,30 +192,29 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
   let totalCollected = 0;
   const amountPerFlat = purposeAmountPerFlat(purpose as { amountPerFlat?: number; amount?: number });
 
-  for (const pay of paidByFlat.values()) {
-    totalCollected += Number(pay.amount) || 0;
-  }
+  const applicableFlats = allFlats.filter((flat) => {
+    if (scope === "all") return true;
+    return isSoldCollectableFlat(flat);
+  });
 
-  for (const flat of allFlats) {
+  for (const flat of applicableFlats) {
     const flatNumber = String(flat.flatNumber);
     const payment = paidByFlat.get(flatNumber);
     const ownerName = (flat.ownerName || "").trim();
     const ownerMobile = flat.ownerMobile || "";
     const hasOwner = !!ownerName;
-    // Sold + On Rent — owner-collectable
-    const isSold = flat.status === "sold" || flat.status === "rent";
-    const isUnsold = flat.status === "available";
+    const isUnsold = isUnsoldFlat(flat);
 
     if (payment) {
       const serialized = serializePayment(payment as never);
       const rawSource = String(
         (payment as { paymentSource?: string | null }).paymentSource || ""
       ).toLowerCase();
-      // Unsold flat payments are Builder-sourced (including legacy rows without paymentSource)
       const isBuilder = rawSource === "builder" || (isUnsold && rawSource !== "owner");
       const displayName = isBuilder
         ? "Builder"
         : (serialized.ownerName || ownerName).trim() || ownerName;
+      totalCollected += Number(serialized.amount) || 0;
       paid.push({
         flatId: flat._id.toString(),
         flatNumber,
@@ -205,6 +235,7 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
     }
 
     if (isUnsold) {
+      // Only when scope = all
       unsoldPending.push({
         flatId: flat._id.toString(),
         flatNumber,
@@ -224,9 +255,6 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
       continue;
     }
 
-    // Pending list: Sold/Rent with owner and unpaid (collectable by owner)
-    if (!isSold || !hasOwner) continue;
-
     pending.push({
       flatId: flat._id.toString(),
       flatNumber,
@@ -239,10 +267,9 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
     });
   }
 
-  const totalFlats = allFlats.length;
+  const totalFlats = applicableFlats.length;
   const paidFlats = paid.length;
   const pendingFlats = Math.max(0, totalFlats - paidFlats);
-  // Target includes Sold + Unsold (entire society)
   const totalCollectionTarget = totalFlats * amountPerFlat;
   const totalPending = Math.max(0, totalCollectionTarget - totalCollected);
   const collectionPercent =
@@ -470,6 +497,17 @@ export async function createBuilderPaymentDistribution(
   const purpose = await PaymentPurpose.findById(purposeId);
   if (!purpose) {
     return { ok: false, message: "Purpose not found", status: 404 };
+  }
+
+  const scope = normalizeCollectionScope(
+    (purpose as { collectionScope?: string }).collectionScope
+  );
+  if (scope !== "all") {
+    return {
+      ok: false,
+      message: "This purpose applies to Sold Flats Only. Builder/Unsold collection is not allowed.",
+      status: 400,
+    };
   }
 
   const amountPerFlat = purposeAmountPerFlat(

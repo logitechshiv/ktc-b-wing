@@ -18,6 +18,14 @@ const PaymentPurposeSchema = new Schema(
       required: true,
       min: 0,
     },
+    /** sold = owner/renter flats only; all = sold + unsold/builder */
+    collectionScope: {
+      type: String,
+      enum: ["sold", "all"],
+      required: true,
+      default: "sold",
+      index: true,
+    },
     isActive: {
       type: Boolean,
       default: true,

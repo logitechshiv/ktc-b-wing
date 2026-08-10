@@ -1,5 +1,9 @@
 import type { DbPaymentMode } from "@/models/Payment";
 import { PAYMENT_MODES } from "@/models/Payment";
+import {
+  normalizeCollectionScope,
+  type CollectionScope,
+} from "@/lib/collection-scope";
 
 /** Resolve amount-per-flat from new or legacy purpose documents. */
 export function purposeAmountPerFlat(doc: {
@@ -19,6 +23,7 @@ export function serializePurpose(doc: {
   /** @deprecated legacy field */
   amount?: number | null;
   description?: string | null;
+  collectionScope?: string | null;
   isActive?: boolean | null;
   createdAt?: Date;
   updatedAt?: Date;
@@ -31,6 +36,7 @@ export function serializePurpose(doc: {
     /** Alias kept for existing UI / clients */
     amount: amountPerFlat,
     description: doc.description || "",
+    collectionScope: normalizeCollectionScope(doc.collectionScope) as CollectionScope,
     isActive: doc.isActive !== false,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -86,6 +92,7 @@ export interface PurposePayload {
   title: string;
   amountPerFlat: number;
   description: string;
+  collectionScope: CollectionScope;
   isActive: boolean;
 }
 
@@ -103,13 +110,21 @@ export function validatePurposePayload(
   );
   const description = String(body.description ?? "").trim();
   const isActive = body.isActive !== false && body.isActive !== "false";
+  const scopeRaw = String(body.collectionScope ?? "").trim().toLowerCase();
+  if (scopeRaw && scopeRaw !== "sold" && scopeRaw !== "all") {
+    return { ok: false, message: "Collection Applicable To must be Sold Flats Only or All Flats" };
+  }
+  const collectionScope = normalizeCollectionScope(scopeRaw || "sold");
 
   if (!title) return { ok: false, message: "Purpose title is required" };
   if (!Number.isFinite(amountPerFlat) || amountPerFlat < 0) {
     return { ok: false, message: "Amount Per Flat must be a valid number" };
   }
 
-  return { ok: true, data: { title, amountPerFlat, description, isActive } };
+  return {
+    ok: true,
+    data: { title, amountPerFlat, description, collectionScope, isActive },
+  };
 }
 
 export interface PaymentPayload {

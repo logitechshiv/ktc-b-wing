@@ -1,9 +1,17 @@
+import {
+  normalizeCollectionScope,
+  type CollectionScope,
+} from "@/lib/collection-scope";
+
+export type { CollectionScope };
+
 export interface PurposeRecord {
   id: string;
   title: string;
   amount: number;
   amountPerFlat: number;
   description: string;
+  collectionScope: CollectionScope;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -24,6 +32,7 @@ export interface PurposeInput {
   amount?: number;
   amountPerFlat?: number;
   description?: string;
+  collectionScope?: CollectionScope;
   isActive?: boolean;
 }
 
@@ -86,6 +95,7 @@ function toPurpose(raw: Record<string, unknown>): PurposeRecord {
     amount: amountPerFlat,
     amountPerFlat,
     description: String(raw.description ?? ""),
+    collectionScope: normalizeCollectionScope(raw.collectionScope),
     isActive: raw.isActive !== false,
     createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
     updatedAt: raw.updatedAt ? String(raw.updatedAt) : undefined,
@@ -125,6 +135,7 @@ export async function createPurpose(input: PurposeInput): Promise<PurposeRecord>
       title: input.title,
       description: input.description ?? "",
       amountPerFlat,
+      collectionScope: normalizeCollectionScope(input.collectionScope),
       isActive: input.isActive !== false,
     }),
   });
@@ -143,6 +154,7 @@ export async function updatePurpose(id: string, input: PurposeInput): Promise<Pu
       title: input.title,
       description: input.description ?? "",
       amountPerFlat,
+      collectionScope: normalizeCollectionScope(input.collectionScope),
       isActive: input.isActive !== false,
     }),
   });
