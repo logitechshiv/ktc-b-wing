@@ -3,6 +3,7 @@ export type ExpensePaymentMethod = "cash" | "bank" | "upi" | "cheque";
 export interface ExpenseCategoryRecord {
   id: string;
   name: string;
+  includeInCommonExpense: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -83,6 +84,7 @@ function toCategory(raw: Record<string, unknown>): ExpenseCategoryRecord {
   return {
     id: String(raw.id ?? raw._id),
     name: String(raw.name ?? ""),
+    includeInCommonExpense: raw.includeInCommonExpense === true,
     createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
     updatedAt: raw.updatedAt ? String(raw.updatedAt) : undefined,
   };
@@ -102,13 +104,16 @@ export async function readExpenseCategories(): Promise<ExpenseCategoryRecord[]> 
   return ((data.categories as Record<string, unknown>[]) || []).map(toCategory);
 }
 
-export async function createExpenseCategory(name: string): Promise<ExpenseCategoryRecord> {
+export async function createExpenseCategory(
+  name: string,
+  includeInCommonExpense = false
+): Promise<ExpenseCategoryRecord> {
   const res = await fetch("/api/expense-categories", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
     cache: "no-store",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, includeInCommonExpense }),
   });
   const data = await parseJson(res);
   return toCategory(data.category);
@@ -116,14 +121,15 @@ export async function createExpenseCategory(name: string): Promise<ExpenseCatego
 
 export async function updateExpenseCategory(
   id: string,
-  name: string
+  name: string,
+  includeInCommonExpense = false
 ): Promise<ExpenseCategoryRecord> {
   const res = await fetch(`/api/expense-categories/${encodeURIComponent(id)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
     cache: "no-store",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, includeInCommonExpense }),
   });
   const data = await parseJson(res);
   return toCategory(data.category);

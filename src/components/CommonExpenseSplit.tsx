@@ -5,8 +5,6 @@ import { inr } from "@/lib/format";
 import { formSelectFilter } from "@/lib/form-styles";
 import { subscribeDataChanged } from "@/lib/data-sync";
 import {
-  COMMON_EXPENSE_EXCLUDED_CATEGORIES,
-  COMMON_EXPENSE_INCLUDED_CATEGORIES,
   COMMON_EXPENSE_TOTAL_FLATS,
   emptyCommonExpenseSplit,
   readCommonExpenseSplit,
@@ -154,10 +152,18 @@ export default function CommonExpenseSplit() {
 
       <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
         <span className="font-medium text-slate-600">Included:</span>{" "}
-        {COMMON_EXPENSE_INCLUDED_CATEGORIES.join(", ")}.
+        {loading
+          ? "Loading…"
+          : stats.includedCategories.length
+            ? stats.includedCategories.join(", ")
+            : "None (mark categories in Expenses → Manage Categories)"}.
         <span className="mt-0.5 block">
           <span className="font-medium text-slate-600">Excluded:</span>{" "}
-          {COMMON_EXPENSE_EXCLUDED_CATEGORIES.join(", ")}.
+          {loading
+            ? "Loading…"
+            : stats.excludedCategories.length
+              ? stats.excludedCategories.join(", ")
+              : "None"}.
         </span>
       </p>
 

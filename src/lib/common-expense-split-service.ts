@@ -4,8 +4,12 @@ import Flat from "@/models/Flat";
 import {
   COMMON_EXPENSE_TOTAL_FLATS,
   computePerFlatShare,
-  isCommonExpenseCategory,
 } from "@/lib/common-expense-constants";
+import {
+  categoryNameMatchesIncluded,
+  getExcludedCommonExpenseCategoryNames,
+  getIncludedCommonExpenseCategoryNames,
+} from "@/lib/expense-category-common";
 
 export interface CommonExpenseSplitResult {
   month: number;
@@ -14,11 +18,11 @@ export interface CommonExpenseSplitResult {
   totalFlats: number;
   perFlatShare: number;
   expenseCount: number;
-  /** Live sold flats (for existing Sold UI boxes only — not the split denominator) */
   soldFlats: number;
-  /** Live unsold/available flats (for existing Unsold UI boxes only) */
   unsoldFlats: number;
   years: number[];
+  includedCategories: string[];
+  excludedCategories: string[];
 }
 
 export async function getCommonExpenseSplit(
@@ -30,7 +34,16 @@ export async function getCommonExpenseSplit(
   const m = Math.min(12, Math.max(1, Math.floor(month) || 1));
   const y = Math.floor(year) || new Date().getUTCFullYear();
 
-  const [monthDocs, yearRows, soldFlats, unsoldFlats] = await Promise.all([
+  const [
+    includedCategories,
+    excludedCategories,
+    monthDocs,
+    yearRows,
+    soldFlats,
+    unsoldFlats,
+  ] = await Promise.all([
+    getIncludedCommonExpenseCategoryNames(),
+    getExcludedCommonExpenseCategoryNames(),
     Expense.find(
       {
         $expr: {
@@ -60,7 +73,7 @@ export async function getCommonExpenseSplit(
   let expenseCount = 0;
   for (const doc of monthDocs) {
     const category = String((doc as { category?: string }).category || "");
-    if (!isCommonExpenseCategory(category)) continue;
+    if (!categoryNameMatchesIncluded(category, includedCategories)) continue;
     const amount = Number((doc as { amount?: number }).amount) || 0;
     if (!Number.isFinite(amount) || amount <= 0) continue;
     totalCommonExpense += amount;
@@ -92,5 +105,7 @@ export async function getCommonExpenseSplit(
     soldFlats: Number(soldFlats) || 0,
     unsoldFlats: Number(unsoldFlats) || 0,
     years,
+    includedCategories,
+    excludedCategories,
   };
 }

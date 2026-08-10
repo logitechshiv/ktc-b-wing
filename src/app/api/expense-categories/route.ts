@@ -2,18 +2,25 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import ExpenseCategory from "@/models/ExpenseCategory";
 import { requireSuperAdmin } from "@/lib/require-super-admin";
+import {
+  defaultIncludeInCommonExpense,
+  parseIncludeInCommonExpense,
+} from "@/lib/common-expense-constants";
+import { ensureExpenseCategoryCommonFlags } from "@/lib/expense-category-common";
 
 export const runtime = "nodejs";
 
 function serializeCategory(doc: {
   _id: { toString(): string };
   name: string;
+  includeInCommonExpense?: boolean | null;
   createdAt?: Date;
   updatedAt?: Date;
 }) {
   return {
     id: doc._id.toString(),
     name: doc.name,
+    includeInCommonExpense: doc.includeInCommonExpense === true,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -23,6 +30,7 @@ function serializeCategory(doc: {
 export async function GET() {
   try {
     await connectDB();
+    await ensureExpenseCategoryCommonFlags();
     let docs = await ExpenseCategory.find({}).sort({ name: 1 }).lean();
 
     // First load: seed category chips from existing expense categories
@@ -33,7 +41,10 @@ export async function GET() {
         .filter(Boolean);
       if (names.length > 0) {
         await ExpenseCategory.insertMany(
-          names.map((name) => ({ name })),
+          names.map((name) => ({
+            name,
+            includeInCommonExpense: defaultIncludeInCommonExpense(name),
+          })),
           { ordered: false }
         ).catch(() => {
           /* ignore duplicate races */
@@ -68,6 +79,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "Category name is required" }, { status: 400 });
     }
 
+    const includeInCommonExpense = parseIncludeInCommonExpense(
+      body.includeInCommonExpense,
+      false
+    );
+
     const existing = await ExpenseCategory.findOne({
       name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
     });
@@ -75,7 +91,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "Category already exists" }, { status: 409 });
     }
 
-    const category = await ExpenseCategory.create({ name });
+    const category = await ExpenseCategory.create({ name, includeInCommonExpense });
     return NextResponse.json(
       { success: true, message: "Category added", category: serializeCategory(category) },
       { status: 201 }

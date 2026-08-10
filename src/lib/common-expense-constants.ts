@@ -2,10 +2,10 @@
 export const COMMON_EXPENSE_TOTAL_FLATS = 52;
 
 /**
- * Only these expense categories count toward Monthly Common Expense Split.
- * Matching is by DB `category` field (not expense title).
+ * Legacy seed defaults used only when migrating categories that are missing
+ * `includeInCommonExpense`. New/updated values come from MongoDB.
  */
-export const COMMON_EXPENSE_INCLUDED_CATEGORIES = [
+export const LEGACY_COMMON_EXPENSE_INCLUDED_CATEGORIES = [
   "Security",
   "Housekeeping",
   "Electricity",
@@ -18,33 +18,32 @@ export const COMMON_EXPENSE_INCLUDED_CATEGORIES = [
   "KIRAN 3 Society Expense",
 ] as const;
 
-/** Categories that must never enter the common split. */
-export const COMMON_EXPENSE_EXCLUDED_CATEGORIES = [
+export const LEGACY_COMMON_EXPENSE_EXCLUDED_CATEGORIES = [
   "Flat Expense",
   "Event",
   "Festival",
 ] as const;
 
-function normalizeCategory(value: string): string {
+export function normalizeCategoryName(value: string): string {
   return String(value || "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
 }
 
-const INCLUDED_SET = new Set(
-  COMMON_EXPENSE_INCLUDED_CATEGORIES.map((c) => normalizeCategory(c))
+const LEGACY_INCLUDED_SET = new Set(
+  LEGACY_COMMON_EXPENSE_INCLUDED_CATEGORIES.map((c) => normalizeCategoryName(c))
 );
-const EXCLUDED_SET = new Set(
-  COMMON_EXPENSE_EXCLUDED_CATEGORIES.map((c) => normalizeCategory(c))
+const LEGACY_EXCLUDED_SET = new Set(
+  LEGACY_COMMON_EXPENSE_EXCLUDED_CATEGORIES.map((c) => normalizeCategoryName(c))
 );
 
-/** True when category is allowlisted and not excluded. */
-export function isCommonExpenseCategory(category: string): boolean {
-  const key = normalizeCategory(category);
+/** Default flag for a category name during safe migration / first seed. */
+export function defaultIncludeInCommonExpense(name: string): boolean {
+  const key = normalizeCategoryName(name);
   if (!key) return false;
-  if (EXCLUDED_SET.has(key)) return false;
-  return INCLUDED_SET.has(key);
+  if (LEGACY_EXCLUDED_SET.has(key)) return false;
+  return LEGACY_INCLUDED_SET.has(key);
 }
 
 export function computePerFlatShare(totalCommonExpense: number, totalFlats = COMMON_EXPENSE_TOTAL_FLATS) {
@@ -53,4 +52,11 @@ export function computePerFlatShare(totalCommonExpense: number, totalFlats = COM
   if (total === 0) return 0;
   const share = total / flats;
   return Number.isFinite(share) ? share : 0;
+}
+
+export function parseIncludeInCommonExpense(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === 1 || value === "1") return true;
+  if (value === "false" || value === 0 || value === "0") return false;
+  return fallback;
 }

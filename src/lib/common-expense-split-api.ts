@@ -1,14 +1,6 @@
-import {
-  COMMON_EXPENSE_EXCLUDED_CATEGORIES,
-  COMMON_EXPENSE_INCLUDED_CATEGORIES,
-  COMMON_EXPENSE_TOTAL_FLATS,
-} from "@/lib/common-expense-constants";
+import { COMMON_EXPENSE_TOTAL_FLATS } from "@/lib/common-expense-constants";
 
-export {
-  COMMON_EXPENSE_EXCLUDED_CATEGORIES,
-  COMMON_EXPENSE_INCLUDED_CATEGORIES,
-  COMMON_EXPENSE_TOTAL_FLATS,
-};
+export { COMMON_EXPENSE_TOTAL_FLATS };
 
 export interface CommonExpenseSplitStats {
   month: number;
@@ -20,6 +12,8 @@ export interface CommonExpenseSplitStats {
   soldFlats: number;
   unsoldFlats: number;
   years: number[];
+  includedCategories: string[];
+  excludedCategories: string[];
 }
 
 export function emptyCommonExpenseSplit(
@@ -36,6 +30,8 @@ export function emptyCommonExpenseSplit(
     soldFlats: 0,
     unsoldFlats: 0,
     years: [year],
+    includedCategories: [],
+    excludedCategories: [],
   };
 }
 
@@ -76,5 +72,11 @@ export async function readCommonExpenseSplit(
           .map((y) => Number(y))
           .filter((y) => Number.isFinite(y))
       : [year],
+    includedCategories: Array.isArray(data.includedCategories)
+      ? (data.includedCategories as unknown[]).map((c) => String(c || "").trim()).filter(Boolean)
+      : [],
+    excludedCategories: Array.isArray(data.excludedCategories)
+      ? (data.excludedCategories as unknown[]).map((c) => String(c || "").trim()).filter(Boolean)
+      : [],
   };
 }

@@ -81,8 +81,10 @@ export default function ExpensesPage() {
   const [deleteCategoryError, setDeleteCategoryError] = useState<string | null>(null);
 
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryIncludeCommon, setNewCategoryIncludeCommon] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState("");
+  const [editingCategoryIncludeCommon, setEditingCategoryIncludeCommon] = useState(false);
   const [categorySaving, setCategorySaving] = useState(false);
 
   const filtersActive = q.trim() !== "" || category !== "all";
@@ -236,10 +238,12 @@ export default function ExpensesPage() {
     setCategorySaving(true);
     setError(null);
     try {
-      await createExpenseCategory(name);
+      await createExpenseCategory(name, newCategoryIncludeCommon);
       setNewCategoryName("");
+      setNewCategoryIncludeCommon(false);
       setSuccess("Category added");
       await loadCategories();
+      notifyDataChanged("expense");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to add category");
     } finally {
@@ -254,12 +258,14 @@ export default function ExpensesPage() {
     setCategorySaving(true);
     setError(null);
     try {
-      await updateExpenseCategory(editingCategoryId, name);
+      await updateExpenseCategory(editingCategoryId, name, editingCategoryIncludeCommon);
       setEditingCategoryId(null);
       setEditingCategoryName("");
+      setEditingCategoryIncludeCommon(false);
       setSuccess("Category updated");
       await loadCategories();
       await load();
+      notifyDataChanged("expense");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to update category");
     } finally {
@@ -282,6 +288,7 @@ export default function ExpensesPage() {
       setDeleteCategoryTarget(null);
       setSuccess("Category deleted");
       await loadCategories();
+      notifyDataChanged("expense");
     } catch (err) {
       setDeleteCategoryError(
         err instanceof Error ? err.message : "Unable to delete this record. Please try again."
@@ -420,75 +427,113 @@ export default function ExpensesPage() {
             Manage Categories
           </div>
           <div className="space-y-3 p-4">
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="New category name"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
-              />
-              <button
-                type="button"
-                disabled={categorySaving || !newCategoryName.trim()}
-                onClick={() => void handleAddCategory()}
-                className="shrink-0 rounded-xl bg-black px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
-              >
-                + Add Category
-              </button>
+            <div className="space-y-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="New category name"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
+                />
+                <button
+                  type="button"
+                  disabled={categorySaving || !newCategoryName.trim()}
+                  onClick={() => void handleAddCategory()}
+                  className="shrink-0 rounded-xl bg-black px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+                >
+                  + Add Category
+                </button>
+              </div>
+              <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={newCategoryIncludeCommon}
+                  onChange={(e) => setNewCategoryIncludeCommon(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+                />
+                Include in Monthly Common Expense Split
+              </label>
             </div>
             <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-100">
               {managedCategories.map((c) => (
-                <li key={c.id} className="flex items-center gap-2 px-3 py-2.5">
+                <li key={c.id} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center">
                   {editingCategoryId === c.id ? (
                     <>
-                      <input
-                        value={editingCategoryName}
-                        onChange={(e) => setEditingCategoryName(e.target.value)}
-                        className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-brand"
-                      />
-                      <button
-                        type="button"
-                        disabled={categorySaving}
-                        onClick={() => void handleSaveCategory()}
-                        className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand"
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingCategoryId(null);
-                          setEditingCategoryName("");
-                        }}
-                        className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-500"
-                      >
-                        Cancel
-                      </button>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <input
+                          value={editingCategoryName}
+                          onChange={(e) => setEditingCategoryName(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-brand"
+                        />
+                        <label className="flex cursor-pointer items-center gap-2 text-[11px] font-medium text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={editingCategoryIncludeCommon}
+                            onChange={(e) => setEditingCategoryIncludeCommon(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-brand focus:ring-brand"
+                          />
+                          Include in Monthly Common Expense Split
+                        </label>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={categorySaving}
+                          onClick={() => void handleSaveCategory()}
+                          className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingCategoryId(null);
+                            setEditingCategoryName("");
+                            setEditingCategoryIncludeCommon(false);
+                          }}
+                          className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-500"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <>
-                      <span className="min-w-0 flex-1 text-sm font-semibold text-navy">{c.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingCategoryId(c.id);
-                          setEditingCategoryName(c.name);
-                        }}
-                        className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        disabled={categorySaving || deletingCategory}
-                        onClick={() => {
-                          setDeleteCategoryError(null);
-                          setDeleteCategoryTarget(c);
-                        }}
-                        className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600"
-                      >
-                        Delete
-                      </button>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-navy">{c.name}</div>
+                        <div
+                          className={
+                            "mt-0.5 text-[11px] font-medium " +
+                            (c.includeInCommonExpense ? "text-emerald-600" : "text-slate-400")
+                          }
+                        >
+                          {c.includeInCommonExpense ? "✓ Included in Common Expense" : "✕ Excluded from Common Expense"}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingCategoryId(c.id);
+                            setEditingCategoryName(c.name);
+                            setEditingCategoryIncludeCommon(!!c.includeInCommonExpense);
+                          }}
+                          className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={categorySaving || deletingCategory}
+                          onClick={() => {
+                            setDeleteCategoryError(null);
+                            setDeleteCategoryTarget(c);
+                          }}
+                          className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </>
                   )}
                 </li>

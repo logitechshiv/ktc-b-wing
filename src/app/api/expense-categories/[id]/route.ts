@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import ExpenseCategory from "@/models/ExpenseCategory";
 import { requireSuperAdmin } from "@/lib/require-super-admin";
+import { parseIncludeInCommonExpense } from "@/lib/common-expense-constants";
 
 export const runtime = "nodejs";
 
@@ -16,12 +17,14 @@ async function resolveId(context: RouteContext) {
 function serializeCategory(doc: {
   _id: { toString(): string };
   name: string;
+  includeInCommonExpense?: boolean | null;
   createdAt?: Date;
   updatedAt?: Date;
 }) {
   return {
     id: doc._id.toString(),
     name: doc.name,
+    includeInCommonExpense: doc.includeInCommonExpense === true,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -45,6 +48,11 @@ export async function PUT(request: Request, context: RouteContext) {
       return NextResponse.json({ success: false, message: "Category name is required" }, { status: 400 });
     }
 
+    const includeInCommonExpense = parseIncludeInCommonExpense(
+      body.includeInCommonExpense,
+      false
+    );
+
     const duplicate = await ExpenseCategory.findOne({
       _id: { $ne: id },
       name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
@@ -55,7 +63,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
     const updated = await ExpenseCategory.findByIdAndUpdate(
       id,
-      { $set: { name } },
+      { $set: { name, includeInCommonExpense } },
       { new: true, runValidators: true }
     );
     if (!updated) {

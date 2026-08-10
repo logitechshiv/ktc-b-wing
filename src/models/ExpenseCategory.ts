@@ -9,6 +9,12 @@ const ExpenseCategorySchema = new Schema(
       unique: true,
       index: true,
     },
+    /** When true, expenses in this category count toward Monthly Common Expense Split */
+    includeInCommonExpense: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   {
     timestamps: true,
