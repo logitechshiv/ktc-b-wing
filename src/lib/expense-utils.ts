@@ -28,8 +28,38 @@ export function normalizeBillImages(input: {
   return unique;
 }
 
+/** Prefer createdAt; fall back to ObjectId generation time for legacy rows. */
+export function resolveExpenseCreatedAt(doc: {
+  _id?: { getTimestamp?: () => Date; toString(): string } | null;
+  createdAt?: Date | string | null;
+}): Date {
+  if (doc.createdAt) {
+    const d = new Date(doc.createdAt);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  if (doc._id && typeof doc._id.getTimestamp === "function") {
+    try {
+      return doc._id.getTimestamp();
+    } catch {
+      /* ignore */
+    }
+  }
+  return new Date(0);
+}
+
+/** Newest created → oldest created (stable by id). */
+export function compareExpensesByCreatedAtDesc(
+  a: { id?: string; createdAt?: Date | string | null },
+  b: { id?: string; createdAt?: Date | string | null }
+): number {
+  const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  if (ta !== tb) return tb - ta;
+  return String(b.id || "").localeCompare(String(a.id || ""));
+}
+
 export function serializeExpense(doc: {
-  _id: { toString(): string };
+  _id: { toString(): string; getTimestamp?: () => Date };
   category: string;
   /** @deprecated legacy English title */
   expenseTitle?: string | null;
@@ -68,7 +98,7 @@ export function serializeExpense(doc: {
     notes: doc.notes || "",
     whatsappShared: !!doc.whatsappShared,
     createdBy: doc.createdBy ? doc.createdBy.toString() : null,
-    createdAt: doc.createdAt,
+    createdAt: resolveExpenseCreatedAt(doc),
     updatedAt: doc.updatedAt,
   };
 }

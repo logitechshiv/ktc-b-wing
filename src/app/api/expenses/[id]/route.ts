@@ -70,6 +70,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
     const { data } = validated;
 
+    // Only patch editable fields — never touch createdAt or displayOrder (list order stays fixed).
     const updated = await Expense.findByIdAndUpdate(
       id,
       {
@@ -91,7 +92,7 @@ export async function PUT(request: Request, context: RouteContext) {
           collectionPurposeName: "",
         },
       },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true, timestamps: true }
     );
 
     if (!updated) {

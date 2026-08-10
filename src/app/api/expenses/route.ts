@@ -11,7 +11,7 @@ export const runtime = "nodejs";
  * GET /api/expenses
  * Query: q, category
  * Public — guests can view.
- * Sorted by creation order (oldest first).
+ * Sorted by creation order (newest first).
  */
 export async function GET(request: Request) {
   try {
@@ -34,7 +34,19 @@ export async function GET(request: Request) {
       ];
     }
 
-    const docs = await Expense.find(filter).sort({ createdAt: 1, _id: 1 }).lean();
+    // createdAt DESC (newest → oldest). Fall back to ObjectId time when createdAt is missing.
+    const docs = await Expense.aggregate([
+      { $match: filter },
+      {
+        $addFields: {
+          _createdAtSort: {
+            $ifNull: ["$createdAt", { $toDate: "$_id" }],
+          },
+        },
+      },
+      { $sort: { _createdAtSort: -1, _id: -1 } },
+      { $project: { _createdAtSort: 0 } },
+    ]);
     const expenses = docs.map((d) => serializeExpense(d as never));
     const shownTotal = expenses.reduce((s, e) => s + e.amount, 0);
 

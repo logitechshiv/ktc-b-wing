@@ -1,3 +1,5 @@
+import { compareExpensesByCreatedAtDesc } from "@/lib/expense-utils";
+
 export type ExpensePaymentMethod = "cash" | "bank" | "upi" | "cheque";
 
 export interface ExpenseCategoryRecord {
@@ -157,8 +159,11 @@ export async function readExpenses(params: ExpenseListParams = {}): Promise<{
 
   const res = await fetch(`/api/expenses?${sp.toString()}`, { cache: "no-store" });
   const data = await parseJson(res);
+  const expenses = ((data.expenses as Record<string, unknown>[]) || [])
+    .map(toExpense)
+    .sort(compareExpensesByCreatedAtDesc);
   return {
-    expenses: ((data.expenses as Record<string, unknown>[]) || []).map(toExpense),
+    expenses,
     shownTotal: Number(data.shownTotal) || 0,
     categories: (data.categories as string[]) || [],
     nextDisplayOrder: Number(data.nextDisplayOrder) || 1,

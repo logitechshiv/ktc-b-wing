@@ -88,7 +88,7 @@ export default function ExpensesPage() {
   const [categorySaving, setCategorySaving] = useState(false);
 
   const filtersActive = q.trim() !== "" || category !== "all";
-  /** List order is fixed by createdAt ASC — drag reorder disabled. */
+  /** List order is fixed by createdAt DESC (newest first) — drag reorder disabled. */
   const canReorder = false;
 
   useEffect(() => {

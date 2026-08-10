@@ -81,7 +81,7 @@ const ExpenseSchema = new Schema(
   }
 );
 
-ExpenseSchema.index({ createdAt: 1 });
+ExpenseSchema.index({ createdAt: -1 });
 
 export type ExpenseDocument = InferSchemaType<typeof ExpenseSchema> & {
   _id: mongoose.Types.ObjectId;
