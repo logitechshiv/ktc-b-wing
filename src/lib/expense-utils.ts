@@ -1,6 +1,33 @@
 import type { DbExpensePaymentMethod } from "@/lib/expense-constants";
 import { EXPENSE_PAYMENT_METHODS } from "@/lib/expense-constants";
 
+export const MAX_EXPENSE_BILL_DOCUMENTS = 10;
+
+/** Normalize legacy `billImage` + `billImages[]` into a unique URL list. */
+export function normalizeBillImages(input: {
+  billImage?: unknown;
+  billImages?: unknown;
+}): string[] {
+  const fromArray = Array.isArray(input.billImages)
+    ? input.billImages.map((u) => String(u ?? "").trim()).filter(Boolean)
+    : [];
+  const single = String(input.billImage ?? "").trim();
+  const merged = [...fromArray];
+  if (single && !merged.includes(single)) {
+    merged.unshift(single);
+  }
+  // de-dupe while preserving order
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const url of merged) {
+    if (seen.has(url)) continue;
+    seen.add(url);
+    unique.push(url);
+    if (unique.length >= MAX_EXPENSE_BILL_DOCUMENTS) break;
+  }
+  return unique;
+}
+
 export function serializeExpense(doc: {
   _id: { toString(): string };
   category: string;
@@ -12,6 +39,7 @@ export function serializeExpense(doc: {
   paymentMethod: DbExpensePaymentMethod;
   expenseDate: Date;
   billImage?: string | null;
+  billImages?: string[] | null;
   notes?: string | null;
   whatsappShared?: boolean | null;
   createdBy?: { toString(): string } | null;
@@ -22,6 +50,11 @@ export function serializeExpense(doc: {
     String(doc.expenseTitleGujarati || "").trim() ||
     String(doc.expenseTitle || "").trim();
 
+  const billImages = normalizeBillImages({
+    billImage: doc.billImage,
+    billImages: doc.billImages,
+  });
+
   return {
     id: doc._id.toString(),
     category: doc.category || "",
@@ -30,7 +63,8 @@ export function serializeExpense(doc: {
     displayOrder: Number(doc.displayOrder) || 0,
     paymentMethod: (doc.paymentMethod || "cash") as DbExpensePaymentMethod,
     expenseDate: doc.expenseDate,
-    billImage: doc.billImage || "",
+    billImage: billImages[0] || "",
+    billImages,
     notes: doc.notes || "",
     whatsappShared: !!doc.whatsappShared,
     createdBy: doc.createdBy ? doc.createdBy.toString() : null,
@@ -46,6 +80,7 @@ export interface ExpensePayload {
   paymentMethod: DbExpensePaymentMethod;
   expenseDate: Date;
   billImage: string;
+  billImages: string[];
   notes: string;
   whatsappShared: boolean;
 }
@@ -61,11 +96,15 @@ export function validateExpensePayload(
   const paymentMethod = String(body.paymentMethod ?? "")
     .trim()
     .toLowerCase() as DbExpensePaymentMethod;
-  const billImage = String(body.billImage ?? "").trim();
   const notes = String(body.notes ?? "").trim();
   const whatsappShared = body.whatsappShared === true || body.whatsappShared === "true";
   const dateRaw = body.expenseDate ? String(body.expenseDate) : new Date().toISOString();
   const expenseDate = new Date(dateRaw);
+
+  const billImages = normalizeBillImages({
+    billImage: body.billImage,
+    billImages: body.billImages,
+  });
 
   if (!category) return { ok: false, message: "Category is required" };
   if (!expenseTitleGujarati) {
@@ -80,6 +119,12 @@ export function validateExpensePayload(
   if (Number.isNaN(expenseDate.getTime())) {
     return { ok: false, message: "Expense Date is invalid" };
   }
+  if (billImages.length > MAX_EXPENSE_BILL_DOCUMENTS) {
+    return {
+      ok: false,
+      message: `You can attach up to ${MAX_EXPENSE_BILL_DOCUMENTS} documents`,
+    };
+  }
 
   return {
     ok: true,
@@ -89,7 +134,8 @@ export function validateExpensePayload(
       amount,
       paymentMethod,
       expenseDate,
-      billImage,
+      billImage: billImages[0] || "",
+      billImages,
       notes,
       whatsappShared,
     },

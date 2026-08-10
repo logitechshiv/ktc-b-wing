@@ -1,20 +1,17 @@
 "use client";
-import { useMemo, useState } from "react";
-import { expenses, flats } from "@/lib/mock-data";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { inr } from "@/lib/format";
 import { formSelectFilter } from "@/lib/form-styles";
-
-/** Common building costs split across all flats */
-const COMMON_CATEGORIES = new Set([
-  "Security",
-  "Housekeeping",
-  "Electricity",
-  "Water",
-  "Lift",
-  "Maintenance",
-]);
-
-const EXCLUDED = ["Flat Expense", "Event", "Festival"];
+import { subscribeDataChanged } from "@/lib/data-sync";
+import {
+  COMMON_EXPENSE_EXCLUDED_CATEGORIES,
+  COMMON_EXPENSE_INCLUDED_CATEGORIES,
+  COMMON_EXPENSE_TOTAL_FLATS,
+  emptyCommonExpenseSplit,
+  readCommonExpenseSplit,
+  type CommonExpenseSplitStats,
+} from "@/lib/common-expense-split-api";
 
 const MONTHS = [
   { value: 1, label: "January" },
@@ -59,32 +56,63 @@ function StatBox({
 }
 
 export default function CommonExpenseSplit() {
-  const years = useMemo(() => {
-    const set = new Set(expenses.map((e) => Number(e.date.slice(0, 4))));
-    if (set.size === 0) set.add(new Date().getFullYear());
-    return Array.from(set).sort((a, b) => b - a);
+  const now = useMemo(() => new Date(), []);
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [stats, setStats] = useState<CommonExpenseSplitStats>(() =>
+    emptyCommonExpenseSplit(now.getMonth() + 1, now.getFullYear())
+  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async (selectedMonth: number, selectedYear: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await readCommonExpenseSplit(selectedMonth, selectedYear);
+      setStats(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load common expense split");
+      setStats(emptyCommonExpenseSplit(selectedMonth, selectedYear));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const [month, setMonth] = useState(8);
-  const [year, setYear] = useState(years[0] ?? 2025);
+  useEffect(() => {
+    void load(month, year);
+  }, [load, month, year]);
 
-  const totalFlats = flats.length;
-  const sold = flats.filter((f) => f.status === "sold").length;
-  const unsold = totalFlats - sold;
-
-  const monthExpenses = useMemo(() => {
-    return expenses.filter((e) => {
-      const [y, m] = e.date.split("-").map(Number);
-      return y === year && m === month && COMMON_CATEGORIES.has(e.category);
+  useEffect(() => {
+    let timer: number | undefined;
+    const unsub = subscribeDataChanged((source) => {
+      if (source !== "expense" && source !== "flat" && source !== "unknown") return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void load(month, year);
+      }, 200);
     });
-  }, [month, year]);
+    return () => {
+      window.clearTimeout(timer);
+      unsub();
+    };
+  }, [load, month, year]);
 
-  const monthTotal = monthExpenses.reduce((s, e) => s + e.amount, 0);
-  const perFlat = totalFlats > 0 ? monthTotal / totalFlats : 0;
+  const totalFlats = COMMON_EXPENSE_TOTAL_FLATS;
+  const monthTotal = Number.isFinite(stats.totalCommonExpense) ? stats.totalCommonExpense : 0;
+  const perFlat = Number.isFinite(stats.perFlatShare) ? stats.perFlatShare : 0;
+  const sold = Number.isFinite(stats.soldFlats) ? stats.soldFlats : 0;
+  const unsold = Number.isFinite(stats.unsoldFlats) ? stats.unsoldFlats : 0;
   const soldTotal = perFlat * sold;
   const unsoldTotal = perFlat * unsold;
-
   const monthLabel = MONTHS.find((m) => m.value === month)?.label ?? "";
+
+  const years = useMemo(() => {
+    const set = new Set(stats.years.length ? stats.years : [year]);
+    set.add(year);
+    set.add(now.getFullYear());
+    return Array.from(set).sort((a, b) => b - a);
+  }, [stats.years, year, now]);
 
   return (
     <section className="overflow-hidden rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80 sm:p-5">
@@ -125,26 +153,35 @@ export default function CommonExpenseSplit() {
       </div>
 
       <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-        <span className="font-medium text-slate-600">Included:</span> Security, Housekeeping, Electricity, Water,
-        Lift, Maintenance.
+        <span className="font-medium text-slate-600">Included:</span>{" "}
+        {COMMON_EXPENSE_INCLUDED_CATEGORIES.join(", ")}.
         <span className="mt-0.5 block">
-          <span className="font-medium text-slate-600">Excluded:</span> {EXCLUDED.join(", ")}.
+          <span className="font-medium text-slate-600">Excluded:</span>{" "}
+          {COMMON_EXPENSE_EXCLUDED_CATEGORIES.join(", ")}.
         </span>
       </p>
 
+      {error ? (
+        <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+          {error}
+        </p>
+      ) : null}
+
       <div className="mt-4 space-y-3">
         <StatBox
-          value={inr(monthTotal)}
+          value={loading ? "…" : inr(monthTotal)}
           label={`${monthLabel} ${year} — common total`}
           hint={
-            monthExpenses.length
-              ? `${monthExpenses.length} expense entries in common categories`
-              : "No common expenses in this month"
+            loading
+              ? "Loading…"
+              : stats.expenseCount
+                ? `${stats.expenseCount} expense entries in common categories`
+                : "No common expenses in this month"
           }
           tone="rose"
         />
         <StatBox
-          value={inr(Math.round(perFlat))}
+          value={loading ? "…" : inr(Math.round(perFlat))}
           label={`Per flat (÷ ${totalFlats})`}
           hint="Same share for every flat in B-Wing"
           tone="sky"
@@ -153,9 +190,14 @@ export default function CommonExpenseSplit() {
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
             <div className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-emerald-700">Sold flats</div>
-            <StatBox value={String(sold)} label="Flats" hint="Member-owned" tone="green" />
             <StatBox
-              value={inr(Math.round(soldTotal))}
+              value={loading ? "…" : String(sold)}
+              label="Flats"
+              hint="Member-owned"
+              tone="green"
+            />
+            <StatBox
+              value={loading ? "…" : inr(Math.round(soldTotal))}
               label="Members’ share"
               hint={`${sold} × per flat`}
               tone="green"
@@ -163,9 +205,14 @@ export default function CommonExpenseSplit() {
           </div>
           <div className="space-y-2">
             <div className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-orange-700">Unsold flats</div>
-            <StatBox value={String(unsold)} label="Flats" hint="Builder" tone="orange" />
             <StatBox
-              value={inr(Math.round(unsoldTotal))}
+              value={loading ? "…" : String(unsold)}
+              label="Flats"
+              hint="Builder"
+              tone="orange"
+            />
+            <StatBox
+              value={loading ? "…" : inr(Math.round(unsoldTotal))}
               label="Builder share"
               hint={`${unsold} × per flat`}
               tone="orange"

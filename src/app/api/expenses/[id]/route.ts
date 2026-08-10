@@ -80,6 +80,7 @@ export async function PUT(request: Request, context: RouteContext) {
           paymentMethod: data.paymentMethod,
           expenseDate: data.expenseDate,
           billImage: data.billImage,
+          billImages: data.billImages,
           notes: data.notes,
           whatsappShared: data.whatsappShared,
         },

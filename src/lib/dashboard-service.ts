@@ -36,6 +36,7 @@ export interface DashboardStats {
     paymentMethod: string;
     expenseDate: string;
     billImage: string;
+    billImages: string[];
     notes: string;
     whatsappShared: boolean;
   }>;
@@ -165,6 +166,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
           ? new Date(s.expenseDate).toISOString().slice(0, 10)
           : "",
         billImage: s.billImage,
+        billImages: s.billImages,
         notes: s.notes,
         whatsappShared: s.whatsappShared,
       };

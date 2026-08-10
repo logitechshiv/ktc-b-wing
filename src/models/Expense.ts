@@ -48,11 +48,16 @@ const ExpenseSchema = new Schema(
       required: true,
       index: true,
     },
-    /** Vercel Blob URL (or legacy local path) */
+    /** Vercel Blob URL (or legacy local path) — first document; kept for older clients */
     billImage: {
       type: String,
       default: "",
       trim: true,
+    },
+    /** Multiple bill / receipt documents (Vercel Blob URLs or legacy paths) */
+    billImages: {
+      type: [String],
+      default: [],
     },
     notes: {
       type: String,

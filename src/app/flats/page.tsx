@@ -15,7 +15,7 @@ import {
 } from "@/lib/flats-api";
 import { notifyDataChanged } from "@/lib/data-sync";
 import PlotDetailsModal from "@/components/flats/PlotDetailsModal";
-import DeleteFlatDialog from "@/components/flats/DeleteFlatDialog";
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 const BADGE_COLORS = [
   "bg-sky-500",
@@ -59,6 +59,7 @@ export default function FlatsPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<FlatRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
@@ -216,8 +217,9 @@ export default function FlatsPage() {
   }
 
   async function handleDelete() {
-    if (!deleteTarget?.id) return;
+    if (!deleteTarget?.id || deleting) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await deleteFlat(deleteTarget.id);
       setDeleteTarget(null);
@@ -225,8 +227,9 @@ export default function FlatsPage() {
       await load();
       notifyDataChanged("flat");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to clear flat details");
-      setDeleteTarget(null);
+      setDeleteError(
+        err instanceof Error ? err.message : "Unable to delete this record. Please try again."
+      );
     } finally {
       setDeleting(false);
     }
@@ -433,7 +436,10 @@ export default function FlatsPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setDeleteTarget(f)}
+                            onClick={() => {
+                              setDeleteError(null);
+                              setDeleteTarget(f);
+                            }}
                             className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
                           >
                             Delete
@@ -470,13 +476,34 @@ export default function FlatsPage() {
         onSubmit={handleSave}
       />
 
-      <DeleteFlatDialog
+      <ConfirmDeleteModal
         open={!!deleteTarget}
-        flatNumber={deleteTarget?.flatNumber}
+        title="Remove flat details?"
+        confirmLabel="Remove details"
+        loadingLabel="Removing…"
         loading={deleting}
-        onCancel={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-      />
+        error={deleteError}
+        onCancel={() => {
+          if (deleting) return;
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+        onConfirm={() => void handleDelete()}
+      >
+        <p>
+          Are you sure you want to remove this flat details
+          {deleteTarget?.flatNumber ? (
+            <>
+              {" "}
+              for <span className="font-semibold text-navy">{deleteTarget.flatNumber}</span>
+            </>
+          ) : null}
+          ?
+        </p>
+        <p className="mt-2 text-xs text-slate-400">
+          The flat card will stay. Owner/renter info will be cleared and status set to Unsold.
+        </p>
+      </ConfirmDeleteModal>
     </div>
   );
 }

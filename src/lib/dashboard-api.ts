@@ -12,6 +12,7 @@ export interface DashboardRecentExpense {
   paymentMethod: string;
   expenseDate: string;
   billImage: string;
+  billImages: string[];
   notes: string;
   whatsappShared: boolean;
 }
@@ -93,6 +94,11 @@ export async function readDashboard(): Promise<DashboardStats> {
           paymentMethod: String(row.paymentMethod || ""),
           expenseDate: String(row.expenseDate || "").slice(0, 10),
           billImage: String(row.billImage || ""),
+          billImages: Array.isArray(row.billImages)
+            ? row.billImages.map((u) => String(u || "").trim()).filter(Boolean)
+            : String(row.billImage || "").trim()
+              ? [String(row.billImage).trim()]
+              : [],
           notes: String(row.notes || ""),
           whatsappShared: !!row.whatsappShared,
         }))

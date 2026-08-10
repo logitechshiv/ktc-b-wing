@@ -18,7 +18,7 @@ import {
 } from "@/lib/vehicles-api";
 import { notifyDataChanged } from "@/lib/data-sync";
 import VehicleModal from "@/components/vehicles/VehicleModal";
-import DeleteVehicleDialog from "@/components/vehicles/DeleteVehicleDialog";
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 const BADGE_COLORS = [
   "bg-sky-500",
@@ -63,6 +63,12 @@ const TYPE_FILTERS: { value: VehicleType | "all"; label: string }[] = [
   { value: "car", label: "Car" },
   { value: "bike", label: "Bike" },
   { value: "auto", label: "Auto" },
+];
+
+const STICKER_FILTERS: { value: "all" | "yes" | "no"; label: string }[] = [
+  { value: "all", label: "All stickers" },
+  { value: "yes", label: "Sticker Yes" },
+  { value: "no", label: "No Sticker" },
 ];
 
 const TYPE_SORT_RANK: Record<string, number> = { car: 0, bike: 1, auto: 2 };
@@ -113,6 +119,7 @@ export default function VehiclesPage() {
   const [modalError, setModalError] = useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<VehicleRecord | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -211,8 +218,9 @@ export default function VehiclesPage() {
   }
 
   async function handleDelete() {
-    if (!deleteTarget?.id) return;
+    if (!deleteTarget?.id || deleting) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await deleteVehicle(deleteTarget.id);
       setDeleteTarget(null);
@@ -220,8 +228,9 @@ export default function VehiclesPage() {
       await load();
       notifyDataChanged("vehicle");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to delete vehicle");
-      setDeleteTarget(null);
+      setDeleteError(
+        err instanceof Error ? err.message : "Unable to delete this record. Please try again."
+      );
     } finally {
       setDeleting(false);
     }
@@ -304,6 +313,32 @@ export default function VehiclesPage() {
               className={
                 "shrink-0 rounded-full border px-3 py-1.5 font-medium transition " +
                 (typeFilter === value
+                  ? "border-brand bg-brand text-white"
+                  : "border-slate-200 bg-white text-slate-500")
+              }
+            >
+              {label} ({count})
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-2 overflow-x-auto pb-0.5 text-xs">
+        {STICKER_FILTERS.map(({ value, label }) => {
+          const count =
+            value === "all"
+              ? summary.total
+              : value === "yes"
+                ? Math.max(0, summary.total - summary.noSticker)
+                : summary.noSticker;
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setStickerFilter(value)}
+              className={
+                "shrink-0 rounded-full border px-3 py-1.5 font-medium transition " +
+                (stickerFilter === value
                   ? "border-brand bg-brand text-white"
                   : "border-slate-200 bg-white text-slate-500")
               }
@@ -427,7 +462,10 @@ export default function VehiclesPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setDeleteTarget(v)}
+                          onClick={() => {
+                            setDeleteError(null);
+                            setDeleteTarget(v);
+                          }}
                           className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
                         >
                           Delete
@@ -459,12 +497,21 @@ export default function VehiclesPage() {
         onSubmit={handleSave}
       />
 
-      <DeleteVehicleDialog
+      <ConfirmDeleteModal
         open={!!deleteTarget}
-        vehicleNumber={deleteTarget?.vehicleNumber}
+        title="Delete Vehicle?"
+        message="Are you sure you want to delete vehicle"
+        itemName={deleteTarget?.vehicleNumber}
+        quoteItemName={false}
+        description="Only this vehicle record will be removed. Flat details will not be affected."
         loading={deleting}
-        onCancel={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
+        error={deleteError}
+        onCancel={() => {
+          if (deleting) return;
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+        onConfirm={() => void handleDelete()}
       />
     </div>
   );

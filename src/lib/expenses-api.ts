@@ -16,6 +16,7 @@ export interface ExpenseRecord {
   paymentMethod: ExpensePaymentMethod;
   expenseDate: string;
   billImage: string;
+  billImages: string[];
   notes: string;
   whatsappShared: boolean;
   createdBy?: string | null;
@@ -30,6 +31,7 @@ export interface ExpenseInput {
   paymentMethod: ExpensePaymentMethod;
   expenseDate?: string;
   billImage?: string;
+  billImages?: string[];
   notes?: string;
   whatsappShared?: boolean;
 }
@@ -39,7 +41,25 @@ export interface ExpenseListParams {
   category?: string | "all";
 }
 
+function normalizeClientBillImages(raw: Record<string, unknown>): string[] {
+  const fromArray = Array.isArray(raw.billImages)
+    ? raw.billImages.map((u) => String(u ?? "").trim()).filter(Boolean)
+    : [];
+  const single = String(raw.billImage ?? "").trim();
+  const merged = [...fromArray];
+  if (single && !merged.includes(single)) merged.unshift(single);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const url of merged) {
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+  }
+  return out;
+}
+
 function toExpense(raw: Record<string, unknown>): ExpenseRecord {
+  const billImages = normalizeClientBillImages(raw);
   return {
     id: String(raw.id ?? raw._id),
     category: String(raw.category ?? ""),
@@ -49,7 +69,8 @@ function toExpense(raw: Record<string, unknown>): ExpenseRecord {
     displayOrder: Number(raw.displayOrder) || 0,
     paymentMethod: (raw.paymentMethod as ExpensePaymentMethod) || "cash",
     expenseDate: raw.expenseDate ? String(raw.expenseDate).slice(0, 10) : "",
-    billImage: String(raw.billImage ?? ""),
+    billImage: billImages[0] || "",
+    billImages,
     notes: String(raw.notes ?? ""),
     whatsappShared: !!raw.whatsappShared,
     createdBy: raw.createdBy ? String(raw.createdBy) : null,

@@ -24,7 +24,8 @@ export async function POST(request: Request) {
     const gate = await requireSuperAdmin();
     if (gate.error) return gate.error;
 
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    const blobToken = (process.env.BLOB_READ_WRITE_TOKEN || "").trim();
+    if (!blobToken) {
       return NextResponse.json(
         {
           success: false,
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
 
     const blob = await put(filename, file, {
       access: "public",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+      token: blobToken,
       contentType: file.type,
     });
 

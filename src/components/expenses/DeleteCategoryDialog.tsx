@@ -4,7 +4,7 @@ import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 interface Props {
   open: boolean;
-  title?: string;
+  name?: string;
   loading: boolean;
   error?: string | null;
   onCancel: () => void;
@@ -12,9 +12,9 @@ interface Props {
 }
 
 /** @deprecated Prefer ConfirmDeleteModal directly */
-export default function DeleteExpenseDialog({
+export default function DeleteCategoryDialog({
   open,
-  title,
+  name,
   loading,
   error,
   onCancel,
@@ -23,8 +23,9 @@ export default function DeleteExpenseDialog({
   return (
     <ConfirmDeleteModal
       open={open}
-      title="Delete Expense?"
-      itemName={title}
+      title="Delete Expense Category?"
+      itemName={name}
+      description="Existing expenses that use this category name will keep their category text. This action cannot be undone."
       loading={loading}
       error={error}
       onCancel={onCancel}

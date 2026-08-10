@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { inr } from "@/lib/format";
+import { MAX_EXPENSE_BILL_DOCUMENTS } from "@/lib/expense-utils";
 import {
   uploadExpenseBill,
   type ExpenseCategoryRecord,
@@ -22,6 +23,12 @@ interface Props {
   onSubmit: (data: ExpenseInput) => Promise<void>;
 }
 
+function docLabel(url: string, index: number) {
+  const lower = url.toLowerCase();
+  const kind = lower.includes(".pdf") || lower.includes("application/pdf") ? "PDF" : "Image";
+  return `Document ${index + 1} (${kind})`;
+}
+
 export default function ExpenseModal({
   open,
   mode,
@@ -37,21 +44,29 @@ export default function ExpenseModal({
   const [amount, setAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<ExpensePaymentMethod>("cash");
   const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [billImage, setBillImage] = useState("");
+  const [billImages, setBillImages] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
     setLocalError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     if (mode === "edit" && initial) {
       setCategory(initial.category);
       setExpenseTitleGujarati(initial.expenseTitleGujarati);
       setAmount(initial.amount);
       setPaymentMethod(initial.paymentMethod);
       setExpenseDate(initial.expenseDate || new Date().toISOString().slice(0, 10));
-      setBillImage(initial.billImage);
+      setBillImages(
+        initial.billImages?.length
+          ? initial.billImages
+          : initial.billImage
+            ? [initial.billImage]
+            : []
+      );
       setNotes(initial.notes);
     } else {
       setCategory(categories[0]?.name || "");
@@ -59,25 +74,58 @@ export default function ExpenseModal({
       setAmount(0);
       setPaymentMethod("cash");
       setExpenseDate(new Date().toISOString().slice(0, 10));
-      setBillImage("");
+      setBillImages([]);
       setNotes("");
     }
   }, [open, mode, initial, categories]);
 
   if (!open) return null;
 
-  async function handleFile(file: File | null) {
-    if (!file) return;
+  async function handleFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+
+    const remaining = MAX_EXPENSE_BILL_DOCUMENTS - billImages.length;
+    if (remaining <= 0) {
+      setLocalError(`You can attach up to ${MAX_EXPENSE_BILL_DOCUMENTS} documents`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    const files = Array.from(fileList).slice(0, remaining);
     setUploading(true);
     setLocalError(null);
     try {
-      const url = await uploadExpenseBill(file);
-      setBillImage(url);
+      const uploaded: string[] = [];
+      for (const file of files) {
+        const url = await uploadExpenseBill(file);
+        if (url) uploaded.push(url);
+      }
+      if (uploaded.length) {
+        setBillImages((prev) => {
+          const next = [...prev];
+          for (const url of uploaded) {
+            if (!next.includes(url) && next.length < MAX_EXPENSE_BILL_DOCUMENTS) {
+              next.push(url);
+            }
+          }
+          return next;
+        });
+      }
+      if (fileList.length > remaining) {
+        setLocalError(
+          `Only ${remaining} more document${remaining === 1 ? "" : "s"} could be added (max ${MAX_EXPENSE_BILL_DOCUMENTS}).`
+        );
+      }
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  }
+
+  function removeDocument(url: string) {
+    setBillImages((prev) => prev.filter((u) => u !== url));
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -103,7 +151,8 @@ export default function ExpenseModal({
       amount,
       paymentMethod,
       expenseDate,
-      billImage,
+      billImage: billImages[0] || "",
+      billImages,
       notes: notes.trim(),
     });
   }
@@ -126,7 +175,7 @@ export default function ExpenseModal({
             <h2 className="text-lg font-bold text-navy">
               {mode === "add" ? "Add Expense" : "Edit Expense"}
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">Category, amount, payment & bill</p>
+            <p className="mt-0.5 text-xs text-slate-500">Category, amount, payment & bills</p>
           </div>
           <button type="button" onClick={onClose} className="text-sm font-medium text-slate-400 hover:text-navy">
             Close
@@ -210,26 +259,51 @@ export default function ExpenseModal({
             </div>
           </div>
 
-          <label className="block text-xs font-semibold text-slate-600">
-            Bill Upload (JPG, JPEG, PNG, PDF)
-            <input
-              type="file"
-              accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
-              onChange={(e) => void handleFile(e.target.files?.[0] || null)}
-              className="mt-1 block w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-brand/10 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand"
-            />
+          <div>
+            <label className="block text-xs font-semibold text-slate-600">
+              Bill Upload (JPG, JPEG, PNG, PDF) — multiple
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                onChange={(e) => void handleFiles(e.target.files)}
+                disabled={uploading || billImages.length >= MAX_EXPENSE_BILL_DOCUMENTS}
+                className="mt-1 block w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-brand/10 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand disabled:opacity-60"
+              />
+            </label>
+            <p className="mt-1 text-[11px] text-slate-400">
+              {billImages.length}/{MAX_EXPENSE_BILL_DOCUMENTS} documents attached
+            </p>
             {uploading && <p className="mt-1 text-[11px] text-slate-400">Uploading…</p>}
-            {billImage && (
-              <a
-                href={billImage}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-flex text-[11px] font-semibold text-brand hover:underline"
-              >
-                View / open document
-              </a>
+            {billImages.length > 0 && (
+              <ul className="mt-2 space-y-1.5">
+                {billImages.map((url, index) => (
+                  <li
+                    key={url}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2"
+                  >
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-w-0 truncate text-[11px] font-semibold text-brand hover:underline"
+                    >
+                      {docLabel(url, index)}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => removeDocument(url)}
+                      disabled={uploading}
+                      className="shrink-0 text-[11px] font-semibold text-rose-600 hover:text-rose-700 disabled:opacity-60"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
-          </label>
+          </div>
 
           <label className="block text-xs font-semibold text-slate-600">
             Notes

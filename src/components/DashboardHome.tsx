@@ -18,6 +18,12 @@ import NoticeCard from "@/components/NoticeCard";
 import CommonExpenseSplit from "@/components/CommonExpenseSplit";
 
 function toExpenseRow(e: DashboardRecentExpense) {
+  const billUrls =
+    e.billImages?.length > 0
+      ? e.billImages
+      : e.billImage
+        ? [e.billImage]
+        : [];
   return {
     id: e.id,
     category: e.category,
@@ -26,8 +32,9 @@ function toExpenseRow(e: DashboardRecentExpense) {
     date: e.expenseDate,
     note: e.notes || undefined,
     paymentMethod: e.paymentMethod,
-    hasBill: !!e.billImage,
-    billUrl: e.billImage || undefined,
+    hasBill: billUrls.length > 0,
+    billUrl: billUrls[0],
+    billUrls,
     sharedToGroup: e.whatsappShared,
     displayOrder: e.displayOrder,
   };

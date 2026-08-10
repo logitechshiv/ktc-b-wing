@@ -22,7 +22,7 @@ import {
 import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
 import ExpenseRow from "@/components/ExpenseRow";
 import ExpenseModal from "@/components/expenses/ExpenseModal";
-import DeleteExpenseDialog from "@/components/expenses/DeleteExpenseDialog";
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 function toRow(e: ExpenseRecord) {
   return {
@@ -33,8 +33,14 @@ function toRow(e: ExpenseRecord) {
     date: e.expenseDate,
     note: e.notes?.trim() || undefined,
     paymentMethod: e.paymentMethod,
-    hasBill: !!e.billImage?.trim(),
-    billUrl: e.billImage?.trim() || undefined,
+    hasBill: (e.billImages?.length ?? 0) > 0 || !!e.billImage?.trim(),
+    billUrl: e.billImages?.[0]?.trim() || e.billImage?.trim() || undefined,
+    billUrls:
+      e.billImages?.length > 0
+        ? e.billImages
+        : e.billImage?.trim()
+          ? [e.billImage.trim()]
+          : undefined,
     sharedToGroup: e.whatsappShared,
     displayOrder: e.displayOrder,
   };
@@ -68,6 +74,11 @@ export default function ExpensesPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<ExpenseRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<ExpenseCategoryRecord | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState(false);
+  const [deleteCategoryError, setDeleteCategoryError] = useState<string | null>(null);
 
   const [newCategoryName, setNewCategoryName] = useState("");
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
@@ -190,8 +201,9 @@ export default function ExpensesPage() {
   }
 
   async function handleDelete() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deleting) return;
     setDeleting(true);
+    setDeleteError(null);
     setError(null);
     try {
       await deleteExpense(deleteTarget.id);
@@ -200,7 +212,9 @@ export default function ExpensesPage() {
       await load();
       notifyDataChanged("expense");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to delete expense");
+      setDeleteError(
+        err instanceof Error ? err.message : "Unable to delete this record. Please try again."
+      );
     } finally {
       setDeleting(false);
     }
@@ -253,8 +267,11 @@ export default function ExpensesPage() {
     }
   }
 
-  async function handleDeleteCategory(id: string) {
-    setCategorySaving(true);
+  async function handleDeleteCategory() {
+    if (!deleteCategoryTarget || deletingCategory) return;
+    const id = deleteCategoryTarget.id;
+    setDeletingCategory(true);
+    setDeleteCategoryError(null);
     setError(null);
     try {
       await deleteExpenseCategory(id);
@@ -262,12 +279,15 @@ export default function ExpensesPage() {
         setEditingCategoryId(null);
         setEditingCategoryName("");
       }
+      setDeleteCategoryTarget(null);
       setSuccess("Category deleted");
       await loadCategories();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to delete category");
+      setDeleteCategoryError(
+        err instanceof Error ? err.message : "Unable to delete this record. Please try again."
+      );
     } finally {
-      setCategorySaving(false);
+      setDeletingCategory(false);
     }
   }
 
@@ -460,8 +480,11 @@ export default function ExpensesPage() {
                       </button>
                       <button
                         type="button"
-                        disabled={categorySaving}
-                        onClick={() => void handleDeleteCategory(c.id)}
+                        disabled={categorySaving || deletingCategory}
+                        onClick={() => {
+                          setDeleteCategoryError(null);
+                          setDeleteCategoryTarget(c);
+                        }}
                         className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600"
                       >
                         Delete
@@ -511,7 +534,10 @@ export default function ExpensesPage() {
                   isDragging={dragId === e.id}
                   isDragOver={overId === e.id}
                   onEdit={() => openEdit(e)}
-                  onDelete={() => setDeleteTarget(e)}
+                  onDelete={() => {
+                    setDeleteError(null);
+                    setDeleteTarget(e);
+                  }}
                   onWhatsappShare={() => void handleWhatsappShare(e)}
                   onDragStart={(ev) => onDragStart(e.id, ev)}
                   onDragOver={(ev) => onDragOver(e.id, ev)}
@@ -543,14 +569,35 @@ export default function ExpensesPage() {
         onSubmit={handleSave}
       />
 
-      <DeleteExpenseDialog
+      <ConfirmDeleteModal
         open={!!deleteTarget}
-        title={
+        title="Delete Expense?"
+        itemName={
           deleteTarget ? displayExpenseTitle(deleteTarget.expenseTitleGujarati) : undefined
         }
         loading={deleting}
-        onCancel={() => setDeleteTarget(null)}
+        error={deleteError}
+        onCancel={() => {
+          if (deleting) return;
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
         onConfirm={() => void handleDelete()}
+      />
+
+      <ConfirmDeleteModal
+        open={!!deleteCategoryTarget}
+        title="Delete Expense Category?"
+        itemName={deleteCategoryTarget?.name}
+        description="Existing expenses that use this category name will keep their category text. This action cannot be undone."
+        loading={deletingCategory}
+        error={deleteCategoryError}
+        onCancel={() => {
+          if (deletingCategory) return;
+          setDeleteCategoryTarget(null);
+          setDeleteCategoryError(null);
+        }}
+        onConfirm={() => void handleDeleteCategory()}
       />
     </div>
   );

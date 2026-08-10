@@ -17,6 +17,7 @@ export interface ExpenseRowData {
   purposeName?: string;
   hasBill?: boolean;
   billUrl?: string;
+  billUrls?: string[];
   sharedToGroup?: boolean;
   displayOrder?: number;
 }
@@ -98,7 +99,13 @@ export default function ExpenseRow({
   const waHref = "https://wa.me/?text=" + encodeURIComponent(buildShareText(e));
   const pay = paymentLabel(e);
   const method = methodLabel(e.expenseMethod);
-  const billHref = e.billUrl || undefined;
+  const billUrls =
+    e.billUrls && e.billUrls.length > 0
+      ? e.billUrls
+      : e.billUrl
+        ? [e.billUrl]
+        : [];
+  const hasBill = e.hasBill || billUrls.length > 0;
 
   return (
     <li
@@ -156,21 +163,24 @@ export default function ExpenseRow({
       >
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
           <span className="tabular-nums">{fmtDateDMY(e.date)}</span>
-          {(e.hasBill || billHref) &&
-            (billHref ? (
-              <a
-                href={billHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-brand hover:underline"
-                title="View bill"
-              >
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                  <path d="M8 3h6l4 4v14H8z" />
-                  <path d="M14 3v4h4M10 12h6M10 16h6" />
-                </svg>
-                Bill
-              </a>
+          {(hasBill) &&
+            (billUrls.length > 0 ? (
+              billUrls.map((url, index) => (
+                <a
+                  key={url}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-brand hover:underline"
+                  title={billUrls.length > 1 ? `View bill ${index + 1}` : "View bill"}
+                >
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M8 3h6l4 4v14H8z" />
+                    <path d="M14 3v4h4M10 12h6M10 16h6" />
+                  </svg>
+                  {billUrls.length > 1 ? `Bill ${index + 1}` : "Bill"}
+                </a>
+              ))
             ) : (
               <span className="inline-flex items-center gap-1 text-slate-400">
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>

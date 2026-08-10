@@ -25,7 +25,7 @@ import { readFlats, type FlatRecord } from "@/lib/flats-api";
 import type { PurposePendingFlat } from "@/lib/payment-purposes-api";
 import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
 import PurposeModal from "@/components/collections/PurposeModal";
-import DeletePurposeDialog from "@/components/collections/DeletePurposeDialog";
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import PurposeDetailsPanel from "@/components/collections/PurposeDetailsPanel";
 import CollectionModal, {
   type CollectionFlatTab,
@@ -394,7 +394,7 @@ export default function CollectionsPage() {
   }
 
   async function handlePurposeDelete() {
-    if (!deletePurposeTarget?.id) return;
+    if (!deletePurposeTarget?.id || deletingPurpose) return;
     setDeletingPurpose(true);
     setDeletePurposeError(null);
     try {
@@ -414,7 +414,7 @@ export default function CollectionsPage() {
       setDeletePurposeError(
         err instanceof Error
           ? err.message
-          : "This Purpose cannot be deleted because payment records already exist."
+          : "Unable to delete this record. Please try again."
       );
     } finally {
       setDeletingPurpose(false);
@@ -950,16 +950,19 @@ export default function CollectionsPage() {
         onSave={() => void saveCollection()}
       />
 
-      <DeletePurposeDialog
+      <ConfirmDeleteModal
         open={!!deletePurposeTarget}
-        title={deletePurposeTarget?.title}
+        title="Delete Purpose?"
+        itemName={deletePurposeTarget?.title}
+        description="All payment records linked to this Purpose will also be deleted permanently. This action cannot be undone."
         loading={deletingPurpose}
         error={deletePurposeError}
         onCancel={() => {
+          if (deletingPurpose) return;
           setDeletePurposeTarget(null);
           setDeletePurposeError(null);
         }}
-        onConfirm={handlePurposeDelete}
+        onConfirm={() => void handlePurposeDelete()}
       />
     </div>
   );
