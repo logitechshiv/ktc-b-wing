@@ -50,7 +50,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 }
 
-/** PUT /api/expenses/[id] — Super Admin (does not change displayOrder) */
+/** PUT /api/expenses/[id] — Super Admin (does not change createdAt or displayOrder) */
 export async function PUT(request: Request, context: RouteContext) {
   try {
     const gate = await requireSuperAdmin();

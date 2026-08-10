@@ -11,7 +11,7 @@ export const runtime = "nodejs";
  * GET /api/expenses
  * Query: q, category
  * Public — guests can view.
- * Sorted by displayOrder ascending.
+ * Sorted by creation order (oldest first).
  */
 export async function GET(request: Request) {
   try {
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       ];
     }
 
-    const docs = await Expense.find(filter).sort({ displayOrder: 1, expenseDate: -1 }).lean();
+    const docs = await Expense.find(filter).sort({ createdAt: 1, _id: 1 }).lean();
     const expenses = docs.map((d) => serializeExpense(d as never));
     const shownTotal = expenses.reduce((s, e) => s + e.amount, 0);
 

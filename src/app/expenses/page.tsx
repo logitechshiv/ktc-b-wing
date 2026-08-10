@@ -88,7 +88,8 @@ export default function ExpensesPage() {
   const [categorySaving, setCategorySaving] = useState(false);
 
   const filtersActive = q.trim() !== "" || category !== "all";
-  const canReorder = isSuperAdmin && !filtersActive && !reordering;
+  /** List order is fixed by createdAt ASC — drag reorder disabled. */
+  const canReorder = false;
 
   useEffect(() => {
     fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
@@ -373,11 +374,7 @@ export default function ExpensesPage() {
       <div className="flex items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold text-navy">Expenses</h1>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {isSuperAdmin
-              ? "Drag cards to reorder · share to WhatsApp group"
-              : "Category · name · share to WhatsApp group"}
-          </p>
+          <p className="mt-0.5 text-xs text-slate-500">Category · name · share to WhatsApp group</p>
         </div>
         <div className="flex items-end gap-3">
           {isSuperAdmin && (
@@ -549,7 +546,7 @@ export default function ExpensesPage() {
       )}
 
       {isSuperAdmin && filtersActive && (
-        <p className="text-[11px] text-amber-600">Clear search & filters to drag and reorder expenses.</p>
+        <p className="text-[11px] text-amber-600">Showing filtered expenses. Clear search & filters to see the full list.</p>
       )}
       {reordering && <p className="text-[11px] text-slate-400">Saving order…</p>}
 
