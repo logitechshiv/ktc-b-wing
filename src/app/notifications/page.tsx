@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import type { SafeUser } from "@/lib/auth-client";
 import {
   deleteNotification,
   markAllNotificationsRead,
   markNotificationRead,
-  notificationHref,
+  resolveNotificationRoute,
   readNotificationsForEveryone,
   type UserNotification,
 } from "@/lib/notifications-api";
@@ -30,7 +29,6 @@ function formatWhen(iso: string) {
 }
 
 export default function NotificationsPage() {
-  const router = useRouter();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [items, setItems] = useState<UserNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -83,7 +81,7 @@ export default function NotificationsPage() {
   }, [load]);
 
   async function onOpen(n: UserNotification) {
-    const href = notificationHref(n.type);
+    const href = resolveNotificationRoute(n);
 
     if (!n.isRead) {
       try {
@@ -105,7 +103,7 @@ export default function NotificationsPage() {
       }
     }
 
-    router.push(href);
+    window.location.assign(href);
   }
 
   async function onMarkAll() {

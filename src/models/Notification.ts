@@ -10,7 +10,14 @@ export const NOTIFICATION_TYPES = [
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
-export const RELATED_TYPES = ["flat", "payment", "expense", "notice", "builder_payment"] as const;
+export const RELATED_TYPES = [
+  "flat",
+  "payment",
+  "expense",
+  "notice",
+  "builder_payment",
+  "vehicle",
+] as const;
 export type NotificationRelatedType = (typeof RELATED_TYPES)[number];
 
 const NotificationSchema = new Schema(

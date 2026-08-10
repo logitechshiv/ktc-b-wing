@@ -3,24 +3,57 @@ export type NotificationType =
   | "FLAT_UPDATED"
   | "COLLECTION_ADDED"
   | "EXPENSE_ADDED"
-  | "NOTICE_CREATED";
+  | "NOTICE_CREATED"
+  | "VEHICLE_ADDED";
 
-/** Related module routes for notification clicks */
-export function notificationHref(type: NotificationType | string): string {
-  switch (type) {
-    case "FLAT_ADDED":
-    case "FLAT_UPDATED":
-      return "/flats";
-    case "COLLECTION_ADDED":
-      return "/collections";
-    case "EXPENSE_ADDED":
-      return "/expenses";
-    case "NOTICE_CREATED":
-      return "/notices";
-    default:
-      return "/notifications";
+const ROUTE_BY_RELATED_TYPE: Record<string, string> = {
+  flat: "/flats",
+  payment: "/collections",
+  builder_payment: "/collections",
+  expense: "/expenses",
+  notice: "/notices",
+  vehicle: "/vehicles",
+};
+
+const ROUTE_BY_NOTIFICATION_TYPE: Record<string, string> = {
+  FLAT_ADDED: "/flats",
+  FLAT_UPDATED: "/flats",
+  COLLECTION_ADDED: "/collections",
+  EXPENSE_ADDED: "/expenses",
+  NOTICE_CREATED: "/notices",
+  VEHICLE_ADDED: "/vehicles",
+};
+
+/**
+ * Resolve the module root for a notification.
+ * Prefer meta.targetRoute → relatedType → type. Never use message text.
+ */
+export function resolveNotificationRoute(n: {
+  type?: string | null;
+  relatedType?: string | null;
+  meta?: Record<string, unknown> | null;
+}): string {
+  const fromMeta = String(n.meta?.targetRoute || "").trim();
+  if (fromMeta.startsWith("/")) return fromMeta;
+
+  const related = String(n.relatedType || "").trim().toLowerCase();
+  if (related && ROUTE_BY_RELATED_TYPE[related]) {
+    return ROUTE_BY_RELATED_TYPE[related];
   }
+
+  const type = String(n.type || "").trim().toUpperCase();
+  if (type && ROUTE_BY_NOTIFICATION_TYPE[type]) {
+    return ROUTE_BY_NOTIFICATION_TYPE[type];
+  }
+
+  return "/";
 }
+
+/** @deprecated Prefer resolveNotificationRoute(notification) */
+export function notificationHref(type: NotificationType | string): string {
+  return resolveNotificationRoute({ type });
+}
+
 
 export interface UserNotification {
   id: string;

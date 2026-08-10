@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import {
   markAllNotificationsRead,
   markNotificationRead,
-  notificationHref,
+  resolveNotificationRoute,
   readNotificationsForEveryone,
   type UserNotification,
 } from "@/lib/notifications-api";
@@ -27,7 +26,6 @@ function formatWhen(iso: string) {
 }
 
 export default function NotificationBell() {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -95,9 +93,9 @@ export default function NotificationBell() {
   }, []);
 
   async function handleOpenItem(n: UserNotification) {
-    const href = notificationHref(n.type);
-    setOpen(false);
+    const href = resolveNotificationRoute(n);
 
+    // Mark read first, then hard-navigate so Admin and User always reach the root page.
     if (!n.isRead) {
       try {
         const result = await markNotificationRead(n.id, authenticated);
@@ -118,7 +116,8 @@ export default function NotificationBell() {
       }
     }
 
-    router.push(href);
+    setOpen(false);
+    window.location.assign(href);
   }
 
   async function handleMarkAll() {

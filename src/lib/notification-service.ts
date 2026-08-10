@@ -8,6 +8,37 @@ import Notification, {
 import NotificationRecipient from "@/models/NotificationRecipient";
 import { inr } from "@/lib/format";
 
+const TARGET_ROUTE_BY_RELATED: Record<string, string> = {
+  flat: "/flats",
+  payment: "/collections",
+  builder_payment: "/collections",
+  expense: "/expenses",
+  notice: "/notices",
+  vehicle: "/vehicles",
+};
+
+const TARGET_ROUTE_BY_TYPE: Record<string, string> = {
+  FLAT_ADDED: "/flats",
+  FLAT_UPDATED: "/flats",
+  COLLECTION_ADDED: "/collections",
+  EXPENSE_ADDED: "/expenses",
+  NOTICE_CREATED: "/notices",
+  VEHICLE_ADDED: "/vehicles",
+};
+
+function resolveTargetRoute(
+  type: string,
+  relatedType?: string | null,
+  meta?: Record<string, unknown>
+): string {
+  const fromMeta = String(meta?.targetRoute || "").trim();
+  if (fromMeta.startsWith("/")) return fromMeta;
+  const related = String(relatedType || "").trim().toLowerCase();
+  if (related && TARGET_ROUTE_BY_RELATED[related]) return TARGET_ROUTE_BY_RELATED[related];
+  const t = String(type || "").trim().toUpperCase();
+  if (t && TARGET_ROUTE_BY_TYPE[t]) return TARGET_ROUTE_BY_TYPE[t];
+  return "/";
+}
 export type CreateNotificationInput = {
   type: NotificationType;
   title: string;
@@ -99,6 +130,14 @@ export async function createNotification(
 
     if (!notification) {
       try {
+        const meta = { ...(input.meta || {}) };
+        if (!meta.targetRoute) {
+          meta.targetRoute = resolveTargetRoute(
+            input.type,
+            input.relatedType,
+            meta
+          );
+        }
         notification = await Notification.create({
           type: input.type,
           title: String(input.title || "").trim(),
@@ -106,7 +145,7 @@ export async function createNotification(
           relatedId: input.relatedId ? String(input.relatedId) : null,
           relatedType: input.relatedType || null,
           dedupeKey,
-          meta: input.meta || {},
+          meta,
         });
         created = true;
       } catch (err: unknown) {
