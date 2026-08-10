@@ -32,7 +32,13 @@ function resolveTargetRoute(
   meta?: Record<string, unknown>
 ): string {
   const fromMeta = String(meta?.targetRoute || "").trim();
-  if (fromMeta.startsWith("/")) return fromMeta;
+  if (
+    fromMeta.startsWith("/") &&
+    fromMeta !== "/notifications" &&
+    !fromMeta.startsWith("/notifications/")
+  ) {
+    return fromMeta;
+  }
   const related = String(relatedType || "").trim().toLowerCase();
   if (related && TARGET_ROUTE_BY_RELATED[related]) return TARGET_ROUTE_BY_RELATED[related];
   const t = String(type || "").trim().toUpperCase();
@@ -61,6 +67,8 @@ export type UserNotificationDTO = {
   message: string;
   relatedId: string | null;
   relatedType: string | null;
+  /** Module root for UI click navigation — never /notifications */
+  targetRoute: string;
   meta: Record<string, unknown>;
   isRead: boolean;
   readAt: string | null;
@@ -86,14 +94,16 @@ function serializeUserNotification(
   }
 ): UserNotificationDTO {
   const meta = { ...((notification.meta || {}) as Record<string, unknown>) };
-  // Always expose a reliable module root for click navigation (legacy rows included).
-  if (!String(meta.targetRoute || "").trim().startsWith("/")) {
-    meta.targetRoute = resolveTargetRoute(
-      notification.type,
-      notification.relatedType,
-      meta
-    );
+  let targetRoute = resolveTargetRoute(
+    notification.type,
+    notification.relatedType,
+    meta
+  );
+  // Never expose the inbox path as an item destination
+  if (targetRoute === "/notifications" || targetRoute.startsWith("/notifications/")) {
+    targetRoute = resolveTargetRoute(notification.type, notification.relatedType, {});
   }
+  meta.targetRoute = targetRoute;
 
   return {
     id: notification._id.toString(),
@@ -103,6 +113,7 @@ function serializeUserNotification(
     message: notification.message,
     relatedId: notification.relatedId ? String(notification.relatedId) : null,
     relatedType: notification.relatedType ? String(notification.relatedType) : null,
+    targetRoute,
     meta,
     isRead: !!recipient.isRead,
     readAt: recipient.readAt ? new Date(recipient.readAt).toISOString() : null,
@@ -141,12 +152,16 @@ export async function createNotification(
     if (!notification) {
       try {
         const meta = { ...(input.meta || {}) };
-        if (!meta.targetRoute) {
-          meta.targetRoute = resolveTargetRoute(
-            input.type,
-            input.relatedType,
-            meta
-          );
+        meta.targetRoute = resolveTargetRoute(
+          input.type,
+          input.relatedType,
+          meta
+        );
+        if (
+          meta.targetRoute === "/notifications" ||
+          String(meta.targetRoute).startsWith("/notifications/")
+        ) {
+          meta.targetRoute = resolveTargetRoute(input.type, input.relatedType, {});
         }
         notification = await Notification.create({
           type: input.type,
@@ -409,14 +424,35 @@ export async function deleteNotificationForUser(
   return (result.deletedCount || 0) > 0;
 }
 
-/** Super Admin — permanently remove notification + all recipient rows */
+/** Super Admin — permanently remove notification from MongoDB Atlas + all recipient rows */
 export async function deleteNotificationAsAdmin(notificationId: string): Promise<boolean> {
   if (!mongoose.Types.ObjectId.isValid(notificationId)) return false;
   const oid = new mongoose.Types.ObjectId(notificationId);
-  const existing = await Notification.findById(oid).select("_id").lean();
-  if (!existing) return false;
+
+  // Prefer the native `notifications` collection so Atlas is the source of truth
+  const notificationsCol = mongoose.connection.collection("notifications");
+  const existing = await notificationsCol.findOne({ _id: oid }, { projection: { _id: 1 } });
+  if (!existing) {
+    // Still purge any orphan recipient rows for this id
+    await NotificationRecipient.deleteMany({ notificationId: oid });
+    return false;
+  }
+
+  // 1) Remove per-user delivery/read rows
   await NotificationRecipient.deleteMany({ notificationId: oid });
-  await Notification.deleteOne({ _id: oid });
+
+  // 2) Remove the shared notification document from Atlas `notifications`
+  await Promise.all([
+    Notification.findByIdAndDelete(oid),
+    notificationsCol.deleteOne({ _id: oid }),
+  ]);
+
+  const stillThere = await notificationsCol.findOne({ _id: oid }, { projection: { _id: 1 } });
+  if (stillThere) {
+    console.error("deleteNotificationAsAdmin: Atlas notifications row still present", notificationId);
+    return false;
+  }
+
   return true;
 }
 
@@ -500,6 +536,7 @@ export async function notifyFlatDetailsUpdated(input: {
       renterName: afterRenterName,
       ownerChanged,
       renterChanged,
+      targetRoute: "/flats",
     },
     actorUserId: input.actorUserId,
   });
@@ -525,7 +562,7 @@ export function notifyCollectionAdded(payment: {
     relatedId: payment.id,
     relatedType: "payment",
     dedupeKey: `COLLECTION_ADDED:${payment.id}`,
-    meta: { flatNumber, ownerName: owner, amount, purpose },
+    meta: { flatNumber, ownerName: owner, amount, purpose, targetRoute: "/collections" },
   });
 }
 
@@ -551,6 +588,7 @@ export function notifyBuilderCollectionAdded(batch: {
       amount,
       flatCount: batch.flatCount,
       purpose,
+      targetRoute: "/collections",
     },
   });
 }
@@ -571,7 +609,7 @@ export function notifyExpenseAdded(expense: {
     relatedId: expense.id,
     relatedType: "expense",
     dedupeKey: `EXPENSE_ADDED:${expense.id}`,
-    meta: { title, category, amount },
+    meta: { title, category, amount, targetRoute: "/expenses" },
   });
 }
 
@@ -588,6 +626,6 @@ export function notifyNoticeCreated(notice: {
     relatedId: notice.id,
     relatedType: "notice",
     dedupeKey: `NOTICE_CREATED:${notice.id}`,
-    meta: { noticeTitle: title },
+    meta: { noticeTitle: title, targetRoute: "/notices" },
   });
 }

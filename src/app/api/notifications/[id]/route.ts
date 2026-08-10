@@ -44,7 +44,8 @@ export async function DELETE(_request: Request, context: RouteContext) {
 
     return NextResponse.json({
       success: true,
-      message: "Notification deleted",
+      message: "Notification deleted from MongoDB",
+      deletedId: id,
     });
   } catch (error) {
     console.error("DELETE /api/notifications/[id] error:", error);

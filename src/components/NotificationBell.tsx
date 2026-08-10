@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 import {
@@ -34,6 +34,7 @@ export default function NotificationBell() {
   const [markingAll, setMarkingAll] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const fetchingRef = useRef(false);
+  const navigatingRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (fetchingRef.current) return;
@@ -77,7 +78,7 @@ export default function NotificationBell() {
   }, [open, refresh]);
 
   useEffect(() => {
-    function onDoc(e: MouseEvent) {
+    function onDoc(e: globalThis.MouseEvent) {
       if (!rootRef.current) return;
       if (!rootRef.current.contains(e.target as Node)) setOpen(false);
     }
@@ -92,29 +93,51 @@ export default function NotificationBell() {
     };
   }, []);
 
-  /** Same navigation model as View All (Link) — never block on mark-read. */
-  function handleItemClick(n: UserNotification) {
-    setOpen(false);
-    if (n.isRead) return;
+  /**
+   * Individual item click — NEVER navigates to /notifications (View All only).
+   * Uses a button (not Link) so it cannot inherit/collide with the View All Link.
+   */
+  async function handleItemClick(e: MouseEvent<HTMLButtonElement>, n: UserNotification) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (navigatingRef.current) return;
+    navigatingRef.current = true;
 
-    void markNotificationRead(n.id, authenticated)
-      .then((result) => {
-        setUnreadCount(result.unreadCount);
-        setItems((prev) =>
-          prev.map((row) =>
-            row.id === n.id
-              ? {
-                  ...row,
-                  isRead: true,
-                  readAt: result.notification?.readAt || new Date().toISOString(),
-                }
-              : row
-          )
-        );
-      })
-      .catch(() => {
-        /* navigation already started via Link */
-      });
+    const href = resolveNotificationRoute(n);
+    // Hard guard: item clicks must never open the inbox
+    const destination =
+      !href || href === "/notifications" || href.startsWith("/notifications/")
+        ? "/"
+        : href;
+
+    setOpen(false);
+
+    if (!n.isRead) {
+      try {
+        const result = await Promise.race([
+          markNotificationRead(n.id, authenticated),
+          new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 1200)),
+        ]);
+        if (result) {
+          setUnreadCount(result.unreadCount);
+          setItems((prev) =>
+            prev.map((row) =>
+              row.id === n.id
+                ? {
+                    ...row,
+                    isRead: true,
+                    readAt: result.notification?.readAt || new Date().toISOString(),
+                  }
+                : row
+            )
+          );
+        }
+      } catch {
+        /* still navigate */
+      }
+    }
+
+    window.location.assign(destination);
   }
 
   async function handleMarkAll() {
@@ -192,9 +215,9 @@ export default function NotificationBell() {
                   .filter((n) => !n.isRead)
                   .map((n) => (
                     <li key={n.id}>
-                      <Link
-                        href={resolveNotificationRoute(n)}
-                        onClick={() => handleItemClick(n)}
+                      <button
+                        type="button"
+                        onClick={(e) => void handleItemClick(e, n)}
                         className="flex w-full gap-2.5 border-b border-slate-50 bg-brand/[0.04] px-3.5 py-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60"
                       >
                         <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden />
@@ -209,7 +232,7 @@ export default function NotificationBell() {
                             {formatWhen(n.createdAt)}
                           </span>
                         </span>
-                      </Link>
+                      </button>
                     </li>
                   ))}
               </ul>
@@ -217,7 +240,10 @@ export default function NotificationBell() {
               <div className="shrink-0 border-t border-slate-100 px-3.5 py-2.5 dark:border-slate-700">
                 <Link
                   href="/notifications"
-                  onClick={() => setOpen(false)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpen(false);
+                  }}
                   className="block text-center text-[12px] font-semibold text-brand hover:underline"
                 >
                   View All

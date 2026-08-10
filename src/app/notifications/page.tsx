@@ -10,7 +10,7 @@ import {
   readNotificationsForEveryone,
   type UserNotification,
 } from "@/lib/notifications-api";
-import { subscribeDataChanged } from "@/lib/data-sync";
+import { subscribeDataChanged, notifyDataChanged } from "@/lib/data-sync";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 type StatusFilter = "all" | "unread" | "read";
@@ -82,6 +82,10 @@ export default function NotificationsPage() {
 
   function onOpen(n: UserNotification) {
     const href = resolveNotificationRoute(n);
+    const destination =
+      !href || href === "/notifications" || href.startsWith("/notifications/")
+        ? "/"
+        : href;
 
     if (!n.isRead) {
       setUnreadCount((c) => Math.max(0, c - 1));
@@ -99,8 +103,7 @@ export default function NotificationsPage() {
         });
     }
 
-    // Navigate immediately (same reliability as dropdown View All / item Links)
-    window.location.assign(href);
+    window.location.assign(destination);
   }
 
   async function onMarkAll() {
@@ -132,6 +135,7 @@ export default function NotificationsPage() {
       await deleteNotification(deleteTarget.id);
       setItems((prev) => prev.filter((row) => row.id !== deleteTarget.id));
       setDeleteTarget(null);
+      notifyDataChanged("unknown");
       void load();
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Unable to delete notification");

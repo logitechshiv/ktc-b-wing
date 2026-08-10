@@ -24,17 +24,41 @@ const ROUTE_BY_NOTIFICATION_TYPE: Record<string, string> = {
   VEHICLE_ADDED: "/vehicles",
 };
 
+const MODULE_ROOTS = new Set([
+  "/flats",
+  "/collections",
+  "/expenses",
+  "/vehicles",
+  "/notices",
+]);
+
+function normalizeModuleRoute(raw: string): string | null {
+  const path = String(raw || "").trim();
+  if (!path.startsWith("/")) return null;
+  // Individual notification clicks must never land on the notifications inbox
+  if (path === "/notifications" || path.startsWith("/notifications/")) return null;
+  const root = "/" + path.split("/").filter(Boolean)[0];
+  if (MODULE_ROOTS.has(root)) return root;
+  if (MODULE_ROOTS.has(path)) return path;
+  return null;
+}
+
 /**
  * Resolve the module root for a notification.
- * Prefer meta.targetRoute → relatedType → type. Never use message text.
+ * Prefer targetRoute → meta.targetRoute → relatedType → type.
+ * Never use message text. Never returns /notifications.
  */
 export function resolveNotificationRoute(n: {
   type?: string | null;
   relatedType?: string | null;
+  targetRoute?: string | null;
   meta?: Record<string, unknown> | null;
 }): string {
-  const fromMeta = String(n.meta?.targetRoute || "").trim();
-  if (fromMeta.startsWith("/")) return fromMeta;
+  const fromTop = normalizeModuleRoute(String(n.targetRoute || ""));
+  if (fromTop) return fromTop;
+
+  const fromMeta = normalizeModuleRoute(String(n.meta?.targetRoute || ""));
+  if (fromMeta) return fromMeta;
 
   const related = String(n.relatedType || "").trim().toLowerCase();
   if (related && ROUTE_BY_RELATED_TYPE[related]) {
@@ -54,7 +78,6 @@ export function notificationHref(type: NotificationType | string): string {
   return resolveNotificationRoute({ type });
 }
 
-
 export interface UserNotification {
   id: string;
   recipientId: string;
@@ -63,6 +86,8 @@ export interface UserNotification {
   message: string;
   relatedId: string | null;
   relatedType: string | null;
+  /** Module root for click navigation, e.g. /flats — never /notifications */
+  targetRoute: string;
   meta: Record<string, unknown>;
   isRead: boolean;
   readAt: string | null;
@@ -81,7 +106,11 @@ async function parseJson(res: Response) {
 }
 
 function toNotification(raw: Record<string, unknown>): UserNotification {
-  return {
+  const meta =
+    raw.meta && typeof raw.meta === "object"
+      ? ({ ...(raw.meta as Record<string, unknown>) } as Record<string, unknown>)
+      : {};
+  const base = {
     id: String(raw.id ?? ""),
     recipientId: String(raw.recipientId ?? ""),
     type: String(raw.type ?? "NOTICE_CREATED") as NotificationType,
@@ -89,10 +118,20 @@ function toNotification(raw: Record<string, unknown>): UserNotification {
     message: String(raw.message ?? ""),
     relatedId: raw.relatedId ? String(raw.relatedId) : null,
     relatedType: raw.relatedType ? String(raw.relatedType) : null,
-    meta: (raw.meta && typeof raw.meta === "object" ? raw.meta : {}) as Record<string, unknown>,
+    targetRoute: raw.targetRoute ? String(raw.targetRoute) : "",
+    meta,
     isRead: !!raw.isRead,
     readAt: raw.readAt ? String(raw.readAt) : null,
     createdAt: raw.createdAt ? String(raw.createdAt) : "",
+  };
+  const targetRoute = resolveNotificationRoute(base);
+  return {
+    ...base,
+    targetRoute,
+    meta: {
+      ...meta,
+      targetRoute,
+    },
   };
 }
 
