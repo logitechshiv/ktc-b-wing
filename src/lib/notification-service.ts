@@ -85,6 +85,16 @@ function serializeUserNotification(
     createdAt?: Date | null;
   }
 ): UserNotificationDTO {
+  const meta = { ...((notification.meta || {}) as Record<string, unknown>) };
+  // Always expose a reliable module root for click navigation (legacy rows included).
+  if (!String(meta.targetRoute || "").trim().startsWith("/")) {
+    meta.targetRoute = resolveTargetRoute(
+      notification.type,
+      notification.relatedType,
+      meta
+    );
+  }
+
   return {
     id: notification._id.toString(),
     recipientId: recipient._id.toString(),
@@ -93,7 +103,7 @@ function serializeUserNotification(
     message: notification.message,
     relatedId: notification.relatedId ? String(notification.relatedId) : null,
     relatedType: notification.relatedType ? String(notification.relatedType) : null,
-    meta: (notification.meta || {}) as Record<string, unknown>,
+    meta,
     isRead: !!recipient.isRead,
     readAt: recipient.readAt ? new Date(recipient.readAt).toISOString() : null,
     createdAt: notification.createdAt

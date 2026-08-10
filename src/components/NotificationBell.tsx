@@ -92,13 +92,13 @@ export default function NotificationBell() {
     };
   }, []);
 
-  async function handleOpenItem(n: UserNotification) {
-    const href = resolveNotificationRoute(n);
+  /** Same navigation model as View All (Link) — never block on mark-read. */
+  function handleItemClick(n: UserNotification) {
+    setOpen(false);
+    if (n.isRead) return;
 
-    // Mark read first, then hard-navigate so Admin and User always reach the root page.
-    if (!n.isRead) {
-      try {
-        const result = await markNotificationRead(n.id, authenticated);
+    void markNotificationRead(n.id, authenticated)
+      .then((result) => {
         setUnreadCount(result.unreadCount);
         setItems((prev) =>
           prev.map((row) =>
@@ -111,13 +111,10 @@ export default function NotificationBell() {
               : row
           )
         );
-      } catch {
-        /* still navigate */
-      }
-    }
-
-    setOpen(false);
-    window.location.assign(href);
+      })
+      .catch(() => {
+        /* navigation already started via Link */
+      });
   }
 
   async function handleMarkAll() {
@@ -195,9 +192,9 @@ export default function NotificationBell() {
                   .filter((n) => !n.isRead)
                   .map((n) => (
                     <li key={n.id}>
-                      <button
-                        type="button"
-                        onClick={() => void handleOpenItem(n)}
+                      <Link
+                        href={resolveNotificationRoute(n)}
+                        onClick={() => handleItemClick(n)}
                         className="flex w-full gap-2.5 border-b border-slate-50 bg-brand/[0.04] px-3.5 py-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60"
                       >
                         <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden />
@@ -212,7 +209,7 @@ export default function NotificationBell() {
                             {formatWhen(n.createdAt)}
                           </span>
                         </span>
-                      </button>
+                      </Link>
                     </li>
                   ))}
               </ul>

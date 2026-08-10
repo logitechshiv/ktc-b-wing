@@ -80,29 +80,26 @@ export default function NotificationsPage() {
     });
   }, [load]);
 
-  async function onOpen(n: UserNotification) {
+  function onOpen(n: UserNotification) {
     const href = resolveNotificationRoute(n);
 
     if (!n.isRead) {
-      try {
-        const result = await markNotificationRead(n.id, authenticated);
-        setUnreadCount(result.unreadCount);
-        setItems((prev) =>
-          prev.map((row) =>
-            row.id === n.id
-              ? {
-                  ...row,
-                  isRead: true,
-                  readAt: result.notification?.readAt || new Date().toISOString(),
-                }
-              : row
-          )
-        );
-      } catch {
-        /* still navigate */
-      }
+      setUnreadCount((c) => Math.max(0, c - 1));
+      setItems((prev) =>
+        prev.map((row) =>
+          row.id === n.id
+            ? { ...row, isRead: true, readAt: new Date().toISOString() }
+            : row
+        )
+      );
+      void markNotificationRead(n.id, authenticated)
+        .then((result) => setUnreadCount(result.unreadCount))
+        .catch(() => {
+          /* still navigate */
+        });
     }
 
+    // Navigate immediately (same reliability as dropdown View All / item Links)
     window.location.assign(href);
   }
 
