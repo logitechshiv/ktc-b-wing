@@ -88,8 +88,21 @@ export async function POST(request: Request) {
       createdBy: gate.user.id,
     });
 
+    const serialized = serializeExpense(expense);
+    try {
+      const { notifyExpenseAdded } = await import("@/lib/notification-service");
+      notifyExpenseAdded({
+        id: serialized.id,
+        title: serialized.expenseTitleGujarati,
+        category: serialized.category,
+        amount: serialized.amount,
+      });
+    } catch (err) {
+      console.error("expense notification error:", err);
+    }
+
     return NextResponse.json(
-      { success: true, message: "Expense added", expense: serializeExpense(expense) },
+      { success: true, message: "Expense added", expense: serialized },
       { status: 201 }
     );
   } catch (error) {

@@ -47,6 +47,7 @@ export default function DashboardHome() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [latestNotices, setLatestNotices] = useState<NoticeRecord[]>([]);
   const [noticesLoading, setNoticesLoading] = useState(true);
+  const [openNoticeId, setOpenNoticeId] = useState<string | null>(null);
 
   const mock = mockStats();
   const pending = mock.dues.filter((d) => d.pending > 0);
@@ -197,22 +198,23 @@ export default function DashboardHome() {
               </div>
               <div className="text-[11px] text-slate-500">4-Wheelers</div>
             </div>
-            <div>
-              <div className="text-lg font-extrabold tabular-nums text-orange-600">
-                {loading ? "…" : dash.vehicles.threeWheelers}
-              </div>
-              <div className="text-[11px] text-slate-500">Auto (3-Wheelers)</div>
-            </div>
+            
             <div>
               <div className="text-lg font-extrabold tabular-nums text-teal-700">
                 {loading ? "…" : dash.vehicles.twoWheelers}
               </div>
               <div className="text-[11px] text-slate-500">2-Wheelers</div>
             </div>
+            <div>
+              <div className="text-lg font-extrabold tabular-nums text-orange-600">
+                {loading ? "…" : dash.vehicles.threeWheelers}
+              </div>
+              <div className="text-[11px] text-slate-500">Auto (3-Wheelers)</div>
+            </div>
           </div>
         </div>
 
-        {mock.pendingFlats > 0 && (
+        {/* {mock.pendingFlats > 0 && (
           <Link
             href="/dues"
             className="mt-3 flex items-center justify-between rounded-2xl border border-amber-100 bg-amber-50 px-3.5 py-3"
@@ -228,7 +230,7 @@ export default function DashboardHome() {
             </div>
             <span className="text-sm font-medium text-amber-700">→</span>
           </Link>
-        )}
+        )} */}
 
         <div className="mt-4 rounded-xl bg-slate-50/80 px-3.5 py-3 text-[11px] leading-relaxed text-slate-500">
           <p>રોકડ હાથમાં = રોકડ જમા − રોકડ ખર્ચ.</p>
@@ -285,12 +287,22 @@ export default function DashboardHome() {
           ) : latestNotices.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-400">હાલમાં કોઈ નવી સૂચના નથી.</p>
           ) : (
-            latestNotices.map((n) => <NoticeCard key={n.id} notice={n} compact />)
+            latestNotices.map((n) => (
+              <NoticeCard
+                key={n.id}
+                notice={n}
+                compact
+                expanded={openNoticeId === n.id}
+                onToggle={() =>
+                  setOpenNoticeId((cur) => (cur === n.id ? null : n.id))
+                }
+              />
+            ))
           )}
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-100 bg-white shadow-sm">
+      {/* <section className="rounded-2xl border border-slate-100 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <h2 className="font-semibold text-navy">Pending dues</h2>
           <Link href="/dues" className="text-xs font-medium text-brand">
@@ -318,7 +330,7 @@ export default function DashboardHome() {
             </li>
           ))}
         </ul>
-      </section>
+      </section> */}
 
       <section className="rounded-2xl border border-slate-100 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">

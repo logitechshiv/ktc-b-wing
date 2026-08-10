@@ -87,7 +87,7 @@ export default function NoticeCard({
               {expanded ? "Show less" : "Read more"}
             </button>
           )}
-          <a
+          {/* <a
             href={shareHref}
             target="_blank"
             rel="noopener noreferrer"
@@ -95,7 +95,7 @@ export default function NoticeCard({
           >
             <span aria-hidden>🟢</span>
             Share
-          </a>
+          </a> */}
         </div>
       </div>
     </article>

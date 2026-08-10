@@ -61,6 +61,19 @@ export async function POST(request: Request) {
 
     const details = await getPurposeDetails(paymentPurposeId);
 
+    try {
+      const { notifyBuilderCollectionAdded } = await import("@/lib/notification-service");
+      notifyBuilderCollectionAdded({
+        id: result.data.builderPaymentId,
+        builderName,
+        amount: result.data.totalAmount,
+        flatCount: result.data.flatCount,
+        purpose: details?.purpose?.title || "",
+      });
+    } catch (err) {
+      console.error("builder payment notification error:", err);
+    }
+
     return NextResponse.json(
       {
         success: true,

@@ -125,11 +125,19 @@ export async function POST(request: Request) {
         notes: data.notes,
       });
 
+      const serialized = serializeFlat(flat);
+      try {
+        const { notifyFlatAdded } = await import("@/lib/notification-service");
+        notifyFlatAdded({ id: serialized.id, flatNumber: serialized.flatNumber });
+      } catch (err) {
+        console.error("flat notification error:", err);
+      }
+
       return NextResponse.json(
         {
           success: true,
           message: "Plot details saved",
-          flat: serializeFlat(flat),
+          flat: serialized,
         },
         { status: 201 }
       );

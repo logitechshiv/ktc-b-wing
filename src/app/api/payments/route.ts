@@ -112,8 +112,22 @@ export async function POST(request: Request) {
       createdBy: gate.user.id,
     });
 
+    const serialized = serializePayment(payment);
+    try {
+      const { notifyCollectionAdded } = await import("@/lib/notification-service");
+      notifyCollectionAdded({
+        id: serialized.id,
+        flatNumber: serialized.flatNumber,
+        ownerName: serialized.ownerName,
+        amount: serialized.amount,
+        purpose: serialized.paymentPurpose,
+      });
+    } catch (err) {
+      console.error("payment notification error:", err);
+    }
+
     return NextResponse.json(
-      { success: true, message: "Payment saved", payment: serializePayment(payment) },
+      { success: true, message: "Payment saved", payment: serialized },
       { status: 201 }
     );
   } catch (error) {

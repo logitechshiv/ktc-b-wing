@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 const modules = [
-  { name: "Dues", desc: "Pending by flat", icon: "📌", href: "/dues" },
   { name: "Notices", desc: "Announcements board", icon: "📢", href: "/notices" },
   { name: "Charge Rounds", desc: "Create dues rounds", icon: "🧾" },
   { name: "Fund Transfer", desc: "Cash → Bank", icon: "🔁" },

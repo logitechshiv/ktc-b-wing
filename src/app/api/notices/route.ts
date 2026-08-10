@@ -58,8 +58,20 @@ export async function POST(request: Request) {
     }
 
     const notice = await Notice.create(validated.data);
+    const serialized = serializeNotice(notice);
+    try {
+      const { notifyNoticeCreated } = await import("@/lib/notification-service");
+      notifyNoticeCreated({
+        id: serialized.id,
+        title: serialized.title,
+        date: serialized.createdAt || null,
+      });
+    } catch (err) {
+      console.error("notice notification error:", err);
+    }
+
     return NextResponse.json(
-      { success: true, message: "Notice added", notice: serializeNotice(notice) },
+      { success: true, message: "Notice added", notice: serialized },
       { status: 201 }
     );
   } catch (error) {

@@ -145,8 +145,21 @@ export async function POST(request: Request) {
           notes,
           createdBy: gate.user.id,
         });
-        payments.push(serializePayment(payment));
+        const serialized = serializePayment(payment);
+        payments.push(serialized);
         created += 1;
+        try {
+          const { notifyCollectionAdded } = await import("@/lib/notification-service");
+          notifyCollectionAdded({
+            id: serialized.id,
+            flatNumber: serialized.flatNumber,
+            ownerName: serialized.ownerName,
+            amount: serialized.amount,
+            purpose: serialized.paymentPurpose,
+          });
+        } catch (err) {
+          console.error("bulk payment notification error:", err);
+        }
       } catch (err: unknown) {
         const code =
           err && typeof err === "object" && "code" in err

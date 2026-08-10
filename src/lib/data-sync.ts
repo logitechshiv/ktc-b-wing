@@ -10,6 +10,7 @@ export type DataChangeSource =
   | "vehicle"
   | "purpose"
   | "notice"
+  | "notification"
   | "unknown";
 
 const EVENT = "ktc:data-changed";
