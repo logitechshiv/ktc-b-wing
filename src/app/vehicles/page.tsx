@@ -500,10 +500,6 @@ export default function VehiclesPage() {
       <ConfirmDeleteModal
         open={!!deleteTarget}
         title="Delete Vehicle?"
-        message="Are you sure you want to delete vehicle"
-        itemName={deleteTarget?.vehicleNumber}
-        quoteItemName={false}
-        description="Only this vehicle record will be removed. Flat details will not be affected."
         loading={deleting}
         error={deleteError}
         onCancel={() => {
@@ -512,7 +508,27 @@ export default function VehiclesPage() {
           setDeleteError(null);
         }}
         onConfirm={() => void handleDelete()}
-      />
+      >
+        <p>Are you sure you want to delete this record?</p>
+        {deleteTarget ? (
+          <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-navy">
+            <span className="font-semibold">Vehicle:</span>{" "}
+            <span className="font-bold tabular-nums">{deleteTarget.vehicleNumber}</span>
+            <br />
+            <span className="font-semibold">Flat:</span>{" "}
+            <span className="tabular-nums">{deleteTarget.flatNumber}</span>
+            {deleteTarget.ownerName ? (
+              <>
+                <br />
+                <span className="font-semibold">Owner:</span> {deleteTarget.ownerName}
+              </>
+            ) : null}
+          </p>
+        ) : null}
+        <p className="mt-2 text-xs text-slate-400">
+          Only this vehicle record will be removed. Flat details will not be affected.
+        </p>
+      </ConfirmDeleteModal>
     </div>
   );
 }

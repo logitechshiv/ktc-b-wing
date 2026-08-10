@@ -478,7 +478,7 @@ export default function FlatsPage() {
 
       <ConfirmDeleteModal
         open={!!deleteTarget}
-        title="Remove flat details?"
+        title="Delete Flat Details?"
         confirmLabel="Remove details"
         loadingLabel="Removing…"
         loading={deleting}
@@ -490,16 +490,20 @@ export default function FlatsPage() {
         }}
         onConfirm={() => void handleDelete()}
       >
-        <p>
-          Are you sure you want to remove this flat details
-          {deleteTarget?.flatNumber ? (
-            <>
-              {" "}
-              for <span className="font-semibold text-navy">{deleteTarget.flatNumber}</span>
-            </>
-          ) : null}
-          ?
-        </p>
+        <p>Are you sure you want to delete this record?</p>
+        {deleteTarget ? (
+          <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-navy">
+            <span className="font-semibold">Flat:</span>{" "}
+            <span className="font-bold tabular-nums">{deleteTarget.flatNumber}</span>
+            {deleteTarget.ownerName || deleteTarget.renterName ? (
+              <>
+                <br />
+                <span className="font-semibold">Name:</span>{" "}
+                {deleteTarget.ownerName || deleteTarget.renterName}
+              </>
+            ) : null}
+          </p>
+        ) : null}
         <p className="mt-2 text-xs text-slate-400">
           The flat card will stay. Owner/renter info will be cleared and status set to Unsold.
         </p>

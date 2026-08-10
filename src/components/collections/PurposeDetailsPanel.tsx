@@ -86,7 +86,6 @@ interface Props {
   /** When true, title/description are shown by the parent accordion */
   hideHeader?: boolean;
   onClose?: () => void;
-  onAddCollection?: () => void;
 }
 
 export default function PurposeDetailsPanel({
@@ -98,7 +97,6 @@ export default function PurposeDetailsPanel({
   statusFilter = "all",
   modeFilter = "all",
   hideHeader = false,
-  onAddCollection,
 }: Props) {
   const [pendingScope, setPendingScope] = useState<PendingScopeFilter>("all");
   const q = searchQuery.trim().toLowerCase();
@@ -160,18 +158,6 @@ export default function PurposeDetailsPanel({
           </div>
         )}
 
-        {isSuperAdmin && onAddCollection && details && !loading && (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={onAddCollection}
-              className="text-xs font-semibold text-brand hover:underline"
-            >
-              + Add Collection
-            </button>
-          </div>
-        )}
-
         {loading && <p className="py-6 text-center text-sm text-slate-400">Loading purpose details…</p>}
 
         {error && (
@@ -180,47 +166,6 @@ export default function PurposeDetailsPanel({
             className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700 dark:border-rose-600/50 dark:bg-rose-950 dark:text-rose-300"
           >
             {error}
-          </div>
-        )}
-
-        {details && !loading && (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800">
-              <div className="text-[10px] text-slate-500 dark:text-slate-400">કુલ ફ્લેટ</div>
-              <div className="text-base font-bold tabular-nums text-navy dark:text-slate-50">
-                {details.summary.totalFlats}
-              </div>
-            </div>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-600/50 dark:bg-emerald-950">
-              <div className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">જમા થયેલ</div>
-              <div className="text-base font-bold tabular-nums text-emerald-800 dark:text-emerald-200">
-                {details.summary.paidFlats}
-              </div>
-            </div>
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 dark:border-rose-600/50 dark:bg-rose-950">
-              <div className="text-[10px] font-medium text-rose-700 dark:text-rose-300">બાકી</div>
-              <div className="text-base font-bold tabular-nums text-rose-800 dark:text-rose-200">
-                {details.summary.pendingFlats}
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800 sm:col-span-1">
-              <div className="text-[10px] text-slate-500 dark:text-slate-400">કુલ જમા રકમ</div>
-              <div className="text-sm font-bold tabular-nums text-brand">
-                {inr(details.summary.totalCollected)}
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800 sm:col-span-2">
-              <div className="text-[10px] text-slate-500 dark:text-slate-400">કુલ બાકી રકમ</div>
-              <div className="text-sm font-bold tabular-nums text-amber-600 dark:text-amber-400">
-                {inr(details.summary.totalPending)}
-              </div>
-            </div>
-            <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800 sm:col-span-3">
-              <div className="text-[10px] text-slate-500 dark:text-slate-400">Collection %</div>
-              <div className="text-sm font-bold tabular-nums text-navy dark:text-slate-50">
-                {details.summary.collectionPercent ?? 0}%
-              </div>
-            </div>
           </div>
         )}
       </section>

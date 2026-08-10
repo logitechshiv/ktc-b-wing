@@ -1,6 +1,17 @@
 "use client";
-import type { Notice, NoticeCategory } from "@/lib/types";
+
 import { fmtDate } from "@/lib/format";
+import type { NoticeCategory } from "@/lib/types";
+
+export interface NoticeCardData {
+  id: string;
+  title: string;
+  body: string;
+  description?: string;
+  category?: NoticeCategory;
+  date: string;
+  pinned?: boolean;
+}
 
 const CATEGORY_META: Record<
   NoticeCategory,
@@ -23,26 +34,26 @@ export default function NoticeCard({
   expanded = false,
   onToggle,
 }: {
-  notice: Notice;
+  notice: NoticeCardData;
   compact?: boolean;
   expanded?: boolean;
   onToggle?: () => void;
 }) {
-  const meta = CATEGORY_META[notice.category];
+  const category = notice.category || "general";
+  const meta = CATEGORY_META[category];
+  const body = (notice.description || notice.body || "").trim();
   const preview =
-    compact && notice.body.length > 90 && !expanded
-      ? notice.body.slice(0, 90).trimEnd() + "…"
-      : notice.body;
+    compact && body.length > 90 && !expanded ? body.slice(0, 90).trimEnd() + "…" : body;
 
   const shareHref =
     "https://wa.me/?text=" +
-    encodeURIComponent(`KCT-3 B-Wing Notice\n\n${notice.title}\n\n${notice.body}\n\n— ${fmtDate(notice.date)}`);
+    encodeURIComponent(`KCT-3 B-Wing Notice\n\n${notice.title}\n\n${body}\n\n— ${fmtDate(notice.date)}`);
 
   return (
     <article
       className={
         "relative overflow-hidden rounded-2xl border bg-white shadow-sm " +
-        (notice.category === "urgent"
+        (category === "urgent"
           ? "border-rose-100"
           : notice.pinned
             ? "border-brand/20"
@@ -67,7 +78,7 @@ export default function NoticeCard({
         <p className={"mt-1.5 leading-relaxed text-slate-600 " + (compact ? "text-xs" : "text-sm")}>{preview}</p>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {onToggle && notice.body.length > 90 && (
+          {onToggle && body.length > 90 && (
             <button
               type="button"
               onClick={onToggle}

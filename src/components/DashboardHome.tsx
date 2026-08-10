@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { notices, stats as mockStats } from "@/lib/mock-data";
+import { stats as mockStats } from "@/lib/mock-data";
 import { inr } from "@/lib/format";
 import { displayExpenseTitle } from "@/lib/expense-utils";
 import {
@@ -11,6 +11,7 @@ import {
   type DashboardRecentExpense,
   type DashboardStats,
 } from "@/lib/dashboard-api";
+import { readNotices, type NoticeRecord } from "@/lib/notices-api";
 import { subscribeDataChanged } from "@/lib/data-sync";
 import ExpenseRow from "@/components/ExpenseRow";
 import SummaryTile from "@/components/SummaryTile";
@@ -44,15 +45,11 @@ export default function DashboardHome() {
   const [dash, setDash] = useState<DashboardStats>(EMPTY_DASHBOARD);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [latestNotices, setLatestNotices] = useState<NoticeRecord[]>([]);
+  const [noticesLoading, setNoticesLoading] = useState(true);
 
   const mock = mockStats();
   const pending = mock.dues.filter((d) => d.pending > 0);
-  const latestNotices = [...notices]
-    .sort((a, b) => {
-      if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
-      return b.date.localeCompare(a.date);
-    })
-    .slice(0, 3);
 
   const load = useCallback(async () => {
     try {
@@ -66,20 +63,35 @@ export default function DashboardHome() {
     }
   }, []);
 
+  const loadNotices = useCallback(async () => {
+    try {
+      const list = await readNotices({ limit: 3 });
+      setLatestNotices(list);
+    } catch {
+      setLatestNotices([]);
+    } finally {
+      setNoticesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void load();
+    void loadNotices();
     let timer: number | undefined;
-    const unsub = subscribeDataChanged(() => {
+    const unsub = subscribeDataChanged((source) => {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         void load();
+        if (source === "notice" || source === "unknown") {
+          void loadNotices();
+        }
       }, 200);
     });
     return () => {
       window.clearTimeout(timer);
       unsub();
     };
-  }, [load]);
+  }, [load, loadNotices]);
 
   const recentExpenses = dash.recentExpenses;
 
@@ -268,9 +280,13 @@ export default function DashboardHome() {
           </Link>
         </div>
         <div className="space-y-2.5">
-          {latestNotices.map((n) => (
-            <NoticeCard key={n.id} notice={n} compact />
-          ))}
+          {noticesLoading ? (
+            <p className="py-6 text-center text-sm text-slate-400">Loading…</p>
+          ) : latestNotices.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-400">હાલમાં કોઈ નવી સૂચના નથી.</p>
+          ) : (
+            latestNotices.map((n) => <NoticeCard key={n.id} notice={n} compact />)
+          )}
         </div>
       </section>
 

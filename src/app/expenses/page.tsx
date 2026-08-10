@@ -614,9 +614,6 @@ export default function ExpensesPage() {
       <ConfirmDeleteModal
         open={!!deleteTarget}
         title="Delete Expense?"
-        itemName={
-          deleteTarget ? displayExpenseTitle(deleteTarget.expenseTitleGujarati) : undefined
-        }
         loading={deleting}
         error={deleteError}
         onCancel={() => {
@@ -625,13 +622,26 @@ export default function ExpensesPage() {
           setDeleteError(null);
         }}
         onConfirm={() => void handleDelete()}
-      />
+      >
+        <p>Are you sure you want to delete this record?</p>
+        {deleteTarget ? (
+          <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-navy">
+            <span className="font-semibold">Expense:</span>{" "}
+            <span className="font-bold">
+              {displayExpenseTitle(deleteTarget.expenseTitleGujarati)}
+            </span>
+            <br />
+            <span className="font-semibold">Category:</span> {deleteTarget.category}
+            <br />
+            <span className="font-semibold">Amount:</span> {inr(deleteTarget.amount)}
+          </p>
+        ) : null}
+        <p className="mt-2 text-xs text-slate-400">This action cannot be undone.</p>
+      </ConfirmDeleteModal>
 
       <ConfirmDeleteModal
         open={!!deleteCategoryTarget}
         title="Delete Expense Category?"
-        itemName={deleteCategoryTarget?.name}
-        description="Existing expenses that use this category name will keep their category text. This action cannot be undone."
         loading={deletingCategory}
         error={deleteCategoryError}
         onCancel={() => {
@@ -640,7 +650,19 @@ export default function ExpensesPage() {
           setDeleteCategoryError(null);
         }}
         onConfirm={() => void handleDeleteCategory()}
-      />
+      >
+        <p>Are you sure you want to delete this record?</p>
+        {deleteCategoryTarget ? (
+          <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-navy">
+            <span className="font-semibold">Category:</span>{" "}
+            <span className="font-bold">{deleteCategoryTarget.name}</span>
+          </p>
+        ) : null}
+        <p className="mt-2 text-xs text-slate-400">
+          Existing expenses that use this category name will keep their category text. This action
+          cannot be undone.
+        </p>
+      </ConfirmDeleteModal>
     </div>
   );
 }

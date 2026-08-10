@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { inr } from "@/lib/format";
 import type { SafeUser } from "@/lib/auth-client";
 import {
@@ -27,6 +27,7 @@ import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
 import PurposeModal from "@/components/collections/PurposeModal";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import PurposeDetailsPanel from "@/components/collections/PurposeDetailsPanel";
+import PurposeSummaryModal from "@/components/collections/PurposeSummaryModal";
 import CollectionModal, {
   type CollectionFlatTab,
 } from "@/components/collections/CollectionModal";
@@ -38,6 +39,30 @@ function shortPurposeTitle(title: string) {
     .replace("Monthly Maintenance - ", "")
     .replace(" Repair Fund ", " ")
     .trim();
+}
+
+const FLAT_BADGE_COLORS = [
+  "bg-emerald-500",
+  "bg-violet-500",
+  "bg-teal-500",
+  "bg-sky-500",
+  "bg-rose-500",
+  "bg-amber-500",
+  "bg-indigo-500",
+  "bg-fuchsia-500",
+];
+
+function flatBadgeColor(flatNumber: string) {
+  let h = 0;
+  for (let i = 0; i < flatNumber.length; i++) {
+    h = (h + flatNumber.charCodeAt(i) * (i + 1)) % FLAT_BADGE_COLORS.length;
+  }
+  return FLAT_BADGE_COLORS[h];
+}
+
+/** Any unpaid flat for the selected purpose (sold pending + unsold/builder pending). */
+function isPendingFlat(row: PurposePendingFlat) {
+  return (Number(row.pendingAmount) || 0) > 0;
 }
 
 /** Build Owner/Renter options from pending sold flats + flat registry. */
@@ -149,6 +174,11 @@ export default function CollectionsPage() {
   const [purposeDetailsError, setPurposeDetailsError] = useState<string | null>(null);
   /** When true, accordion open skips refetch (details already applied live). */
   const skipDetailsReloadRef = useRef(false);
+  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+
+  /** Filter-bar summary + pending sold flats for the selected Purpose only */
+  const [filterDetails, setFilterDetails] = useState<PurposeDetails | null>(null);
+  const [filterDetailsLoading, setFilterDetailsLoading] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
@@ -277,6 +307,46 @@ export default function CollectionsPage() {
   });
 
   const firstPurpose = pickFirstPurpose(purposes);
+  const selectedPurposeId = purposeFilterId || firstPurpose?.id || "";
+  const selectedPurpose =
+    purposes.find((p) => p.id === selectedPurposeId) ||
+    (filterDetails?.purpose.id === selectedPurposeId ? filterDetails.purpose : null);
+  const selectedPurposeStat =
+    purposeStats.find((s) => s.purposeId === selectedPurposeId) || null;
+
+  const pendingFlatsForBadges = useMemo(() => {
+    if (!filterDetails || filterDetails.purpose.id !== selectedPurposeId) return [];
+
+    const byNumber = new Map<string, PurposePendingFlat>();
+
+    for (const row of filterDetails.pending) {
+      if (!isPendingFlat(row)) continue;
+      byNumber.set(row.flatNumber, row);
+    }
+
+    // Ensure unsold/builder pending flats are included even if only in unsoldPending
+    for (const row of filterDetails.unsoldPending || []) {
+      if ((Number(row.pendingAmount) || 0) <= 0) continue;
+      if (byNumber.has(row.flatNumber)) continue;
+      byNumber.set(row.flatNumber, {
+        flatId: row.flatId,
+        flatNumber: row.flatNumber,
+        floorNumber: row.floorNumber,
+        ownerName: "",
+        ownerMobile: "",
+        hasOwner: false,
+        pendingAmount: row.pendingAmount,
+        flatStatus: "available",
+      });
+    }
+
+    return Array.from(byNumber.values()).sort(
+      (a, b) =>
+        a.floorNumber - b.floorNumber ||
+        Number(a.flatNumber) - Number(b.flatNumber) ||
+        a.flatNumber.localeCompare(b.flatNumber)
+    );
+  }, [filterDetails, selectedPurposeId]);
 
   const visiblePurposes = purposes.filter((p) =>
     purposeFilterId ? p.id === purposeFilterId : p.id === firstPurpose?.id
@@ -328,11 +398,35 @@ export default function CollectionsPage() {
     }
   }, []);
 
+  const loadFilterPurposeDetails = useCallback(async (id: string) => {
+    if (!id) {
+      setFilterDetails(null);
+      setFilterDetailsLoading(false);
+      return;
+    }
+    setFilterDetailsLoading(true);
+    try {
+      const details = await readPurposeDetails(id);
+      setFilterDetails(details);
+    } catch {
+      setFilterDetails(null);
+    } finally {
+      setFilterDetailsLoading(false);
+    }
+  }, []);
+
+  /** Keep filter summary + pending sold flats in sync with selected Purpose. */
+  useEffect(() => {
+    if (!purposeReady) return;
+    void loadFilterPurposeDetails(selectedPurposeId);
+  }, [purposeReady, selectedPurposeId, loadFilterPurposeDetails]);
+
   function togglePurposeAccordion(id: string) {
     setExpandedPurposeId((current) => {
       if (current === id) {
         setPurposeDetails(null);
         setPurposeDetailsError(null);
+        setSummaryModalOpen(false);
         return null;
       }
       return id;
@@ -345,6 +439,7 @@ export default function CollectionsPage() {
       setPurposeDetails(null);
       setPurposeDetailsError(null);
       setPurposeDetailsLoading(false);
+      setSummaryModalOpen(false);
       return;
     }
     if (skipDetailsReloadRef.current) {
@@ -362,9 +457,12 @@ export default function CollectionsPage() {
         if (expandedPurposeId) {
           void loadPurposeDetails(expandedPurposeId, { silent: true });
         }
+        if (selectedPurposeId) {
+          void loadFilterPurposeDetails(selectedPurposeId);
+        }
       }
     });
-  }, [load, expandedPurposeId, loadPurposeDetails]);
+  }, [load, expandedPurposeId, loadPurposeDetails, selectedPurposeId, loadFilterPurposeDetails]);
 
   async function handlePurposeSave(data: PurposeInput) {
     setPurposeSaving(true);
@@ -718,43 +816,105 @@ export default function CollectionsPage() {
           </div>
         )}
 
-        <ul className="mt-3 space-y-1.5">
-          {purposeStats.map((s) => {
-            const purpose = purposes.find((p) => p.id === s.purposeId);
-            if (!purpose) return null;
-            return (
-              <li key={s.purposeId} className="flex gap-2 text-xs leading-relaxed text-slate-600">
+        <ul className="mt-3 space-y-2.5">
+          {selectedPurpose && selectedPurposeStat ? (
+            <li className="space-y-2.5">
+              {/* Screenshot layout: pending line → all pending flat badges → full summary */}
+              {filterDetailsLoading && pendingFlatsForBadges.length === 0 ? (
+                <p className="text-[11px] text-slate-400">Loading pending flats…</p>
+              ) : pendingFlatsForBadges.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex gap-2 text-xs leading-relaxed text-slate-600">
+                    <span className="mt-0.5 text-amber-500" aria-hidden>
+                      ◆
+                    </span>
+                    <p className="text-left">
+                      <span className="font-semibold text-navy">
+                        &quot;{shortPurposeTitle(selectedPurpose.title)}&quot;
+                      </span>
+                      {" — "}
+                      <span className="font-semibold text-amber-600">
+                        {pendingFlatsForBadges.length}
+                      </span>{" "}
+                      ફ્લેટનું કલેક્શન બાકી છે:
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 pl-4">
+                    {pendingFlatsForBadges.map((flat) => {
+                      const isUnsold = String(flat.flatStatus || "") === "available";
+                      return (
+                        <span
+                          key={flat.flatId || flat.flatNumber}
+                          title={
+                            isUnsold
+                              ? `Unsold Flat ${flat.flatNumber} pending`
+                              : `Sold Flat ${flat.flatNumber} pending`
+                          }
+                          className={
+                            "inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2.5 text-[11px] font-bold tabular-nums text-white shadow-[0_2px_6px_rgba(0,0,0,0.18)] " +
+                            flatBadgeColor(flat.flatNumber)
+                          }
+                        >
+                          {flat.flatNumber}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2 text-xs leading-relaxed text-slate-600">
+                  <span className="mt-0.5 text-amber-500" aria-hidden>
+                    ◆
+                  </span>
+                  <p className="text-left">
+                    <span className="font-semibold text-navy">
+                      &quot;{shortPurposeTitle(selectedPurpose.title)}&quot;
+                    </span>
+                    {" — "}
+                    <span className="text-emerald-600">કોઈ બાકી કલેક્શન નથી.</span>
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-2 text-xs leading-relaxed text-slate-600">
                 <span className="mt-0.5 text-amber-500" aria-hidden>
                   ◆
                 </span>
-                <button
-                  type="button"
-                  className="text-left"
-                  onClick={() => {
-                    setPurposeFilterId(s.purposeId);
-                    // Filter only — do not auto-expand accordion
-                  }}
-                >
-                  <span className="font-semibold text-navy">{shortPurposeTitle(purpose.title)}:</span>{" "}
-                  {s.total} ફ્લેટ માંથી{" "}
-                  <span className="font-semibold text-emerald-600">{s.collected}</span> ફ્લેટનું કલેક્શન
-                  {s.collected === 0 ? " આવ્યું છે" : " આવી ગયું છે"}
-                  {s.pending > 0 ? (
+                <p className="text-left">
+                  <span className="font-semibold text-navy">
+                    {shortPurposeTitle(selectedPurpose.title)}:
+                  </span>{" "}
+                  {selectedPurposeStat.total} ફ્લેટ માંથી{" "}
+                  <span className="font-semibold text-emerald-600">
+                    {selectedPurposeStat.collected}
+                  </span>{" "}
+                  ફ્લેટનું કલેક્શન
+                  {selectedPurposeStat.collected === 0 ? " આવ્યું છે" : " આવી ગયું છે"}
+                  {selectedPurposeStat.pending > 0 ? (
                     <>
-                      . <span className="font-semibold text-amber-600">{s.pending}</span> ફ્લેટના{" "}
-                      <span className="font-semibold text-amber-600">{inr(s.pendingAmount)}</span> બાકી છે.
+                      ,{" "}
+                      <span className="font-semibold text-amber-600">
+                        {selectedPurposeStat.pending}
+                      </span>{" "}
+                      ફ્લેટના{" "}
+                      <span className="font-semibold text-amber-600">
+                        {inr(selectedPurposeStat.pendingAmount)}
+                      </span>{" "}
+                      બાકી છે
                     </>
                   ) : (
                     <>
                       . <span className="text-emerald-600">કોઈ બાકી રકમ નથી.</span>
                     </>
                   )}
-                </button>
-              </li>
-            );
-          })}
-          {purposes.length === 0 && (
+                </p>
+              </div>
+            </li>
+          ) : purposes.length === 0 ? (
             <li className="text-xs text-slate-400">No payment purposes yet.</li>
+          ) : (
+            <li className="text-xs text-slate-400">Select a Purpose (Round) to view summary.</li>
           )}
         </ul>
       </section>
@@ -808,56 +968,73 @@ export default function CollectionsPage() {
               id={`purpose-accordion-${purpose.id}`}
               className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm"
             >
-              <button
-                type="button"
-                onClick={() => togglePurposeAccordion(purpose.id)}
-                className="flex w-full items-start gap-2 px-4 py-3 text-left"
-                aria-expanded={isOpen}
-              >
-                <div className="min-w-0 flex-1">
+              <div className="flex items-start gap-2 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => togglePurposeAccordion(purpose.id)}
+                  className="min-w-0 flex-1 text-left"
+                  aria-expanded={isOpen}
+                >
                   <div className="text-sm font-bold text-navy">{purpose.title}</div>
                   {!!purpose.description.trim() && (
                     <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
                       {purpose.description}
                     </p>
                   )}
+                </button>
+
+                <div className="mt-0.5 flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                  {isSuperAdmin && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openEditPurpose(purpose)}
+                        className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeletePurposeError(null);
+                          setDeletePurposeTarget(purpose);
+                        }}
+                        className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (expandedPurposeId !== purpose.id) {
+                        togglePurposeAccordion(purpose.id);
+                      }
+                      setSummaryModalOpen(true);
+                    }}
+                    className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-navy hover:bg-slate-100"
+                  >
+                    Summary
+                  </button>
                 </div>
-                <span
+
+                <button
+                  type="button"
+                  onClick={() => togglePurposeAccordion(purpose.id)}
                   className={
-                    "mt-0.5 shrink-0 text-slate-400 transition " + (isOpen ? "rotate-180" : "")
+                    "mt-0.5 shrink-0 px-0.5 text-slate-400 transition " +
+                    (isOpen ? "rotate-180" : "")
                   }
-                  aria-hidden
+                  aria-label={isOpen ? "Collapse purpose" : "Expand purpose"}
+                  aria-expanded={isOpen}
                 >
                   ▾
-                </span>
-              </button>
+                </button>
+              </div>
 
               {isOpen && (
                 <div className="space-y-3 border-t border-slate-100 px-4 py-4">
-                  {isSuperAdmin && (
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openEditPurpose(purpose)}
-                          className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDeletePurposeError(null);
-                            setDeletePurposeTarget(purpose);
-                          }}
-                          className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
                   <PurposeDetailsPanel
                     details={detailsForCard}
                     loading={purposeDetailsLoading}
@@ -867,9 +1044,6 @@ export default function CollectionsPage() {
                     statusFilter={statusFilter}
                     modeFilter={modeFilter}
                     hideHeader
-                    onAddCollection={
-                      isSuperAdmin ? () => openCollectForm(purpose.id) : undefined
-                    }
                   />
                 </div>
               )}
@@ -902,6 +1076,15 @@ export default function CollectionsPage() {
           setPurposeModalError(null);
         }}
         onSubmit={handlePurposeSave}
+      />
+
+      <PurposeSummaryModal
+        open={summaryModalOpen}
+        details={
+          purposeDetails?.purpose.id === expandedPurposeId ? purposeDetails : null
+        }
+        loading={purposeDetailsLoading}
+        onClose={() => setSummaryModalOpen(false)}
       />
 
       <CollectionModal
@@ -953,8 +1136,6 @@ export default function CollectionsPage() {
       <ConfirmDeleteModal
         open={!!deletePurposeTarget}
         title="Delete Purpose?"
-        itemName={deletePurposeTarget?.title}
-        description="All payment records linked to this Purpose will also be deleted permanently. This action cannot be undone."
         loading={deletingPurpose}
         error={deletePurposeError}
         onCancel={() => {
@@ -963,7 +1144,26 @@ export default function CollectionsPage() {
           setDeletePurposeError(null);
         }}
         onConfirm={() => void handlePurposeDelete()}
-      />
+      >
+        <p>Are you sure you want to delete this record?</p>
+        {deletePurposeTarget ? (
+          <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-navy">
+            <span className="font-semibold">Purpose:</span>{" "}
+            <span className="font-bold">{deletePurposeTarget.title}</span>
+            {deletePurposeTarget.amountPerFlat || deletePurposeTarget.amount ? (
+              <>
+                <br />
+                <span className="font-semibold">Amount/flat:</span>{" "}
+                {deletePurposeTarget.amountPerFlat || deletePurposeTarget.amount}
+              </>
+            ) : null}
+          </p>
+        ) : null}
+        <p className="mt-2 text-xs text-slate-400">
+          All payment records linked to this Purpose will also be deleted permanently. This action
+          cannot be undone.
+        </p>
+      </ConfirmDeleteModal>
     </div>
   );
 }
