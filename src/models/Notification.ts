@@ -2,6 +2,7 @@ import mongoose, { Schema, models, model, type InferSchemaType, type Model } fro
 
 export const NOTIFICATION_TYPES = [
   "FLAT_ADDED",
+  "FLAT_UPDATED",
   "COLLECTION_ADDED",
   "EXPENSE_ADDED",
   "NOTICE_CREATED",

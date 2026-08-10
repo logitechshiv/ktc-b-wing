@@ -126,12 +126,6 @@ export async function POST(request: Request) {
       });
 
       const serialized = serializeFlat(flat);
-      try {
-        const { notifyFlatAdded } = await import("@/lib/notification-service");
-        notifyFlatAdded({ id: serialized.id, flatNumber: serialized.flatNumber });
-      } catch (err) {
-        console.error("flat notification error:", err);
-      }
 
       return NextResponse.json(
         {

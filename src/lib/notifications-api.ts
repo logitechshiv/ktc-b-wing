@@ -1,5 +1,6 @@
 export type NotificationType =
   | "FLAT_ADDED"
+  | "FLAT_UPDATED"
   | "COLLECTION_ADDED"
   | "EXPENSE_ADDED"
   | "NOTICE_CREATED";
@@ -8,6 +9,7 @@ export type NotificationType =
 export function notificationHref(type: NotificationType | string): string {
   switch (type) {
     case "FLAT_ADDED":
+    case "FLAT_UPDATED":
       return "/flats";
     case "COLLECTION_ADDED":
       return "/collections";

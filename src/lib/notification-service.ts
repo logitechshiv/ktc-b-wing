@@ -18,6 +18,8 @@ export type CreateNotificationInput = {
   meta?: Record<string, unknown>;
   /** If omitted, fan-out to all active users */
   targetUserIds?: string[];
+  /** Always include this user in recipients (e.g. creating Super Admin) */
+  actorUserId?: string;
 };
 
 export type UserNotificationDTO = {
@@ -124,6 +126,12 @@ export async function createNotification(
     if (!notification) return null;
 
     const userIds = await resolveTargetUserIds(input.targetUserIds);
+    if (input.actorUserId && mongoose.Types.ObjectId.isValid(input.actorUserId)) {
+      const actorOid = new mongoose.Types.ObjectId(input.actorUserId);
+      if (!userIds.some((id) => id.equals(actorOid))) {
+        userIds.push(actorOid);
+      }
+    }
     if (userIds.length === 0) {
       return { notificationId: notification._id.toString(), created };
     }
@@ -176,10 +184,65 @@ export function enqueueNotification(input: CreateNotificationInput): void {
 
 export async function countUnreadForUser(userId: string): Promise<number> {
   if (!mongoose.Types.ObjectId.isValid(userId)) return 0;
+  await ensureRecipientsForUser(userId);
   return NotificationRecipient.countDocuments({
     userId: new mongoose.Types.ObjectId(userId),
     isRead: false,
   });
+}
+
+/** Backfill recipient rows so logged-in users see society notifications they missed. */
+async function ensureRecipientsForUser(userId: string): Promise<void> {
+  if (!mongoose.Types.ObjectId.isValid(userId)) return;
+  const uid = new mongoose.Types.ObjectId(userId);
+  const recent = await Notification.find({})
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(100)
+    .select("_id createdAt")
+    .lean();
+  if (recent.length === 0) return;
+
+  const ids = recent.map((n) => n._id);
+  const existing = await NotificationRecipient.find({
+    userId: uid,
+    notificationId: { $in: ids },
+  })
+    .select("notificationId")
+    .lean();
+  const have = new Set(existing.map((e) => String(e.notificationId)));
+  const missing = recent.filter((n) => !have.has(String(n._id)));
+  if (missing.length === 0) return;
+
+  try {
+    await NotificationRecipient.insertMany(
+      missing.map((n) => ({
+        notificationId: n._id,
+        userId: uid,
+        isRead: false,
+        readAt: null,
+        createdAt: n.createdAt || new Date(),
+      })),
+      { ordered: false }
+    );
+  } catch (err: unknown) {
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? Number((err as { code: number }).code)
+        : 0;
+    if (code !== 11000) {
+      const writeErrors =
+        err && typeof err === "object" && "writeErrors" in err
+          ? (err as { writeErrors?: Array<{ code?: number }> }).writeErrors
+          : null;
+      const onlyDupes =
+        Array.isArray(writeErrors) &&
+        writeErrors.length > 0 &&
+        writeErrors.every((e) => e.code === 11000);
+      if (!onlyDupes) {
+        console.error("ensureRecipientsForUser error:", err);
+      }
+    }
+  }
 }
 
 export async function listNotificationsForUser(params: {
@@ -192,6 +255,8 @@ export async function listNotificationsForUser(params: {
     return { notifications: [], unreadCount: 0 };
   }
 
+  await ensureRecipientsForUser(userId);
+
   const uid = new mongoose.Types.ObjectId(userId);
   const limit = Math.min(100, Math.max(1, params.limit || 30));
   const status = params.status || "all";
@@ -202,7 +267,7 @@ export async function listNotificationsForUser(params: {
 
   const [recipients, unreadCount] = await Promise.all([
     NotificationRecipient.find(filter).sort({ createdAt: -1, _id: -1 }).limit(limit).lean(),
-    countUnreadForUser(userId),
+    NotificationRecipient.countDocuments({ userId: uid, isRead: false }),
   ]);
 
   if (recipients.length === 0) {
@@ -230,6 +295,8 @@ export async function markNotificationReadForUser(
   if (!mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(notificationId)) {
     return null;
   }
+
+  await ensureRecipientsForUser(userId);
 
   const recipient = await NotificationRecipient.findOneAndUpdate(
     {
@@ -306,19 +373,86 @@ export async function deleteNotificationAsAdmin(notificationId: string): Promise
 
 /* ——— Event helpers ——— */
 
-export function notifyFlatAdded(flat: {
+function normFlatText(value: unknown): string {
+  return String(value || "").trim();
+}
+
+/**
+ * Notify when an existing Flat's owner/renter details are actually changed.
+ * Returns null when nothing relevant changed (no notification).
+ */
+export async function notifyFlatDetailsUpdated(input: {
   id: string;
   flatNumber: string;
-}): void {
-  const flatNumber = String(flat.flatNumber || "").trim();
-  enqueueNotification({
-    type: "FLAT_ADDED",
-    title: "New Flat Added",
-    message: `Flat ${flatNumber} ની નવી entry કરવામાં આવી છે.`,
-    relatedId: flat.id,
+  before: {
+    ownerName?: string | null;
+    ownerMobile?: string | null;
+    renterName?: string | null;
+    renterMobile?: string | null;
+  };
+  after: {
+    ownerName?: string | null;
+    ownerMobile?: string | null;
+    renterName?: string | null;
+    renterMobile?: string | null;
+  };
+  actorUserId?: string;
+  /** Stable stamp from Flat.updatedAt after save — prevents duplicate double-submit */
+  updatedAt?: Date | string | null;
+}): Promise<{ notificationId: string; created: boolean } | null> {
+  const flatNumber = normFlatText(input.flatNumber);
+  const beforeOwnerName = normFlatText(input.before.ownerName);
+  const beforeOwnerMobile = normFlatText(input.before.ownerMobile);
+  const beforeRenterName = normFlatText(input.before.renterName);
+  const beforeRenterMobile = normFlatText(input.before.renterMobile);
+
+  const afterOwnerName = normFlatText(input.after.ownerName);
+  const afterOwnerMobile = normFlatText(input.after.ownerMobile);
+  const afterRenterName = normFlatText(input.after.renterName);
+  const afterRenterMobile = normFlatText(input.after.renterMobile);
+
+  const ownerChanged =
+    beforeOwnerName !== afterOwnerName || beforeOwnerMobile !== afterOwnerMobile;
+  const renterChanged =
+    beforeRenterName !== afterRenterName || beforeRenterMobile !== afterRenterMobile;
+
+  if (!ownerChanged && !renterChanged) return null;
+
+  const parts: string[] = [];
+  // Gujarati name fields only — include sentence only when the side changed and a name exists
+  if (ownerChanged && afterOwnerName) {
+    parts.push(
+      `Flat No. ${flatNumber} માટે માલિક તરીકે ${afterOwnerName}ની વિગતો ઉમેરવામાં આવી છે.`
+    );
+  }
+  if (renterChanged && afterRenterName) {
+    parts.push(
+      `Flat No. ${flatNumber} માટે ભાડૂત તરીકે ${afterRenterName}ની વિગતો ઉમેરવામાં આવી છે.`
+    );
+  }
+
+  if (parts.length === 0) return null;
+
+  const stamp =
+    input.updatedAt != null
+      ? new Date(input.updatedAt).getTime()
+      : Date.now();
+
+  return createNotification({
+    type: "FLAT_UPDATED",
+    title: "Flat Details Updated",
+    message: parts.join(" "),
+    relatedId: input.id,
     relatedType: "flat",
-    dedupeKey: `FLAT_ADDED:${flat.id}`,
-    meta: { flatNumber },
+    dedupeKey: `FLAT_UPDATED:${input.id}:${stamp}`,
+    meta: {
+      flatNumber,
+      ownerName: afterOwnerName,
+      renterName: afterRenterName,
+      ownerChanged,
+      renterChanged,
+    },
+    actorUserId: input.actorUserId,
   });
 }
 

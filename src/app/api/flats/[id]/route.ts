@@ -73,6 +73,13 @@ export async function PUT(request: Request, context: RouteContext) {
 
     const { data } = validated;
 
+    const before = {
+      ownerName: String(existing.ownerName || "").trim(),
+      ownerMobile: String(existing.ownerMobile || "").trim(),
+      renterName: String(existing.renterName || "").trim(),
+      renterMobile: String(existing.renterMobile || "").trim(),
+    };
+
     const updated = await Flat.findByIdAndUpdate(
       id,
       {
@@ -96,10 +103,30 @@ export async function PUT(request: Request, context: RouteContext) {
       return NextResponse.json({ success: false, message: "Flat not found" }, { status: 404 });
     }
 
+    const serialized = serializeFlat(updated);
+    try {
+      const { notifyFlatDetailsUpdated } = await import("@/lib/notification-service");
+      await notifyFlatDetailsUpdated({
+        id: serialized.id,
+        flatNumber: serialized.flatNumber,
+        before,
+        after: {
+          ownerName: serialized.ownerName,
+          ownerMobile: serialized.ownerMobile,
+          renterName: serialized.renterName,
+          renterMobile: serialized.renterMobile,
+        },
+        actorUserId: gate.user.id,
+        updatedAt: updated.updatedAt,
+      });
+    } catch (err) {
+      console.error("flat update notification error:", err);
+    }
+
     return NextResponse.json({
       success: true,
       message: "Plot details updated",
-      flat: serializeFlat(updated),
+      flat: serialized,
     });
   } catch (error) {
     console.error("PUT /api/flats/[id] error:", error);
