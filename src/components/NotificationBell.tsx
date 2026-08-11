@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { Bell } from "lucide-react";
 import {
+  guestMarkRead,
   markAllNotificationsRead,
   markNotificationRead,
   resolveNotificationRoute,
@@ -23,6 +23,14 @@ function formatWhen(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function moduleDestination(n: UserNotification): string {
+  const href = resolveNotificationRoute(n);
+  if (!href || href === "/notifications" || href.startsWith("/notifications/")) {
+    return "/";
+  }
+  return href;
 }
 
 export default function NotificationBell() {
@@ -93,51 +101,49 @@ export default function NotificationBell() {
     };
   }, []);
 
+  function markReadInBackground(n: UserNotification) {
+    if (n.isRead) return;
+    if (!authenticated) {
+      guestMarkRead(n.id);
+      return;
+    }
+    // keepalive so mark-read survives the hard navigation
+    try {
+      void fetch(`/api/notifications/${encodeURIComponent(n.id)}/read`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        keepalive: true,
+        cache: "no-store",
+      });
+    } catch {
+      void markNotificationRead(n.id, authenticated).catch(() => {});
+    }
+  }
+
   /**
-   * Individual item click — NEVER navigates to /notifications (View All only).
-   * Uses a button (not Link) so it cannot inherit/collide with the View All Link.
+   * Middle notification card → related module root (e.g. /flats).
+   * NEVER /notifications — that is View All only.
+   * Navigate synchronously on pointerdown before any React unmount.
    */
-  async function handleItemClick(e: MouseEvent<HTMLButtonElement>, n: UserNotification) {
+  function openRelatedRoot(e: PointerEvent<HTMLButtonElement>, n: UserNotification) {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     if (navigatingRef.current) return;
     navigatingRef.current = true;
 
-    const href = resolveNotificationRoute(n);
-    // Hard guard: item clicks must never open the inbox
-    const destination =
-      !href || href === "/notifications" || href.startsWith("/notifications/")
-        ? "/"
-        : href;
-
+    const destination = moduleDestination(n);
+    markReadInBackground(n);
     setOpen(false);
+    window.location.href = destination;
+  }
 
-    if (!n.isRead) {
-      try {
-        const result = await Promise.race([
-          markNotificationRead(n.id, authenticated),
-          new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 1200)),
-        ]);
-        if (result) {
-          setUnreadCount(result.unreadCount);
-          setItems((prev) =>
-            prev.map((row) =>
-              row.id === n.id
-                ? {
-                    ...row,
-                    isRead: true,
-                    readAt: result.notification?.readAt || new Date().toISOString(),
-                  }
-                : row
-            )
-          );
-        }
-      } catch {
-        /* still navigate */
-      }
-    }
-
-    window.location.assign(destination);
+  function openNotificationsInbox(e: PointerEvent<HTMLButtonElement>) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen(false);
+    window.location.href = "/notifications";
   }
 
   async function handleMarkAll() {
@@ -159,6 +165,7 @@ export default function NotificationBell() {
 
   const badge =
     unreadCount > 0 ? (unreadCount > 99 ? "99+" : String(unreadCount)) : null;
+  const unreadItems = items.filter((n) => !n.isRead);
 
   return (
     <div ref={rootRef} className="relative">
@@ -181,9 +188,7 @@ export default function NotificationBell() {
         <div
           className={
             "z-50 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900 " +
-            // Mobile: stay inside viewport under the header
             "fixed left-3 right-3 top-[calc(env(safe-area-inset-top)+3.75rem)] max-h-[min(28rem,calc(100dvh-6.5rem))] " +
-            // sm+: anchor to the bell button
             "sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[22rem] sm:max-w-[min(22rem,calc(100vw-1.5rem))]"
           }
         >
@@ -210,44 +215,51 @@ export default function NotificationBell() {
                 </button>
               </div>
 
-              <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                {items
-                  .filter((n) => !n.isRead)
-                  .map((n) => (
-                    <li key={n.id}>
-                      <button
-                        type="button"
-                        onClick={(e) => void handleItemClick(e, n)}
-                        className="flex w-full gap-2.5 border-b border-slate-50 bg-brand/[0.04] px-3.5 py-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60"
-                      >
-                        <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden />
-                        <span className="min-w-0 flex-1 overflow-hidden">
-                          <span className="block break-words text-[12px] font-bold text-navy dark:text-slate-100">
-                            {n.title}
-                          </span>
-                          <span className="mt-0.5 block break-words text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-                            {n.message}
-                          </span>
-                          <span className="mt-1 block text-[10px] tabular-nums text-slate-400">
-                            {formatWhen(n.createdAt)}
-                          </span>
+              {/* Entire middle region is the notification target — not View All */}
+              <ul className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+                {unreadItems.map((n, index) => (
+                  <li
+                    key={n.id}
+                    className={
+                      unreadItems.length === 1 ? "flex min-h-[7rem] flex-1 flex-col" : undefined
+                    }
+                  >
+                    <button
+                      type="button"
+                      data-notification-id={n.id}
+                      data-target-route={moduleDestination(n)}
+                      onPointerDown={(e) => openRelatedRoot(e, n)}
+                      className={
+                        "relative z-10 flex w-full gap-2.5 border-b border-slate-50 bg-brand/[0.04] px-3.5 py-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60 " +
+                        (unreadItems.length === 1 ? "flex-1 items-start" : "") +
+                        (index === unreadItems.length - 1 ? " border-b-0" : "")
+                      }
+                    >
+                      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden />
+                      <span className="min-w-0 flex-1 overflow-hidden">
+                        <span className="block break-words text-[12px] font-bold text-navy dark:text-slate-100">
+                          {n.title}
                         </span>
-                      </button>
-                    </li>
-                  ))}
+                        <span className="mt-0.5 block break-words text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                          {n.message}
+                        </span>
+                        <span className="mt-1 block text-[10px] tabular-nums text-slate-400">
+                          {formatWhen(n.createdAt)}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
               </ul>
 
-              <div className="shrink-0 border-t border-slate-100 px-3.5 py-2.5 dark:border-slate-700">
-                <Link
-                  href="/notifications"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpen(false);
-                  }}
-                  className="block text-center text-[12px] font-semibold text-brand hover:underline"
+              <div className="relative z-0 shrink-0 border-t border-slate-100 px-3.5 py-2.5 dark:border-slate-700">
+                <button
+                  type="button"
+                  onPointerDown={openNotificationsInbox}
+                  className="block w-full text-center text-[12px] font-semibold text-brand hover:underline"
                 >
                   View All
-                </Link>
+                </button>
               </div>
             </div>
           )}
