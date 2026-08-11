@@ -92,32 +92,32 @@ export default function NotificationBell() {
     };
   }, []);
 
-  /** Click any notification card → /notifications (same as View All). */
-  function handleItemClick(n: UserNotification) {
+  /** Same destination for Admin + User/guest — never role-gated. */
+  function goToNotificationsInbox() {
     setOpen(false);
-
-    if (!n.isRead) {
-      setUnreadCount((c) => Math.max(0, c - 1));
-      setItems((prev) =>
-        prev.map((row) =>
-          row.id === n.id
-            ? { ...row, isRead: true, readAt: new Date().toISOString() }
-            : row
-        )
-      );
-      void markNotificationRead(n.id, authenticated)
-        .then((result) => setUnreadCount(result.unreadCount))
-        .catch(() => {
-          /* still navigate */
-        });
-    }
-
     router.push("/notifications");
   }
 
+  /**
+   * Card click works for every viewer (Super Admin, logged-in User, guest).
+   * Navigate first; mark-read runs in background so UI re-renders cannot cancel nav.
+   */
+  function handleItemClick(n: UserNotification) {
+    const shouldMark = !n.isRead;
+    const id = n.id;
+    const isAuth = authenticated;
+
+    goToNotificationsInbox();
+
+    if (shouldMark) {
+      void markNotificationRead(id, isAuth).catch(() => {
+        /* navigation already started */
+      });
+    }
+  }
+
   function handleViewAll() {
-    setOpen(false);
-    router.push("/notifications");
+    goToNotificationsInbox();
   }
 
   async function handleMarkAll() {
@@ -198,7 +198,7 @@ export default function NotificationBell() {
                       className="flex w-full cursor-pointer gap-2.5 border-b border-slate-50 bg-brand/[0.04] px-3.5 py-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60"
                     >
                       <span
-                        className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand pointer-events-none"
+                        className="pointer-events-none mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand"
                         aria-hidden
                       />
                       <span className="pointer-events-none min-w-0 flex-1 overflow-hidden">

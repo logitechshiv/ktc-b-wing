@@ -268,7 +268,8 @@ export async function markNotificationRead(
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (res.status === 401) {
+  // Any auth failure / missing recipient → guest local read (User + Admin both still navigate)
+  if (res.status === 401 || res.status === 403 || res.status === 404) {
     guestMarkRead(id);
     const data = await readNotificationsForEveryone({ limit: 50 });
     return {
