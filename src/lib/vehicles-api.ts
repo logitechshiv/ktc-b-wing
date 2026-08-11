@@ -1,3 +1,5 @@
+import { CacheKeys, cachedQuery } from "@/lib/data-cache";
+
 export type VehicleType = "car" | "bike" | "auto";
 export type VehicleOwnerType = "owner" | "renter";
 
@@ -118,45 +120,56 @@ async function parseJson(res: Response) {
 }
 
 /** GET /api/vehicles */
-export async function readVehicles(params: VehicleListParams = {}): Promise<VehicleListResult> {
-  const sp = new URLSearchParams();
-  if (params.q?.trim()) sp.set("q", params.q.trim());
-  if (params.sticker && params.sticker !== "all") sp.set("sticker", params.sticker);
-  if (params.type && params.type !== "all") sp.set("type", params.type);
+export async function readVehicles(
+  params: VehicleListParams & { force?: boolean } = {}
+): Promise<VehicleListResult> {
+  const q = params.q?.trim() || "";
+  const sticker = params.sticker || "all";
+  const type = params.type || "all";
+  return cachedQuery(
+    CacheKeys.vehicles(q, sticker, type),
+    async () => {
+      const sp = new URLSearchParams();
+      if (q) sp.set("q", q);
+      if (sticker !== "all") sp.set("sticker", sticker);
+      if (type !== "all") sp.set("type", type);
 
-  const res = await fetch(`/api/vehicles?${sp.toString()}`, { cache: "no-store" });
-  const data = await parseJson(res);
-
-  return {
-    vehicles: ((data.vehicles as Record<string, unknown>[]) || []).map(toVehicle),
-    groups: ((data.groups as Array<Record<string, unknown>>) || []).map((g) => {
-      const vehicles = ((g.vehicles as Record<string, unknown>[]) || []).map(toVehicle);
-      // Prefer the vehicle document field — this is the source of truth from MongoDB
-      const rawType =
-        vehicles[0]?.vehicleOwnerType ??
-        (typeof g.vehicleOwnerType === "string" ? g.vehicleOwnerType : undefined);
-      const vehicleOwnerType: VehicleOwnerType =
-        String(rawType ?? "owner").toLowerCase() === "renter" ? "renter" : "owner";
+      const res = await fetch(`/api/vehicles?${sp.toString()}`, { cache: "no-store" });
+      const data = await parseJson(res);
 
       return {
-        key: String(g.key ?? `${g.floorNumber}-${g.flatNumber}-${vehicleOwnerType}`),
-        floorNumber: Number(g.floorNumber),
-        flatNumber: String(g.flatNumber ?? ""),
-        vehicleOwnerType,
-        ownerName: String(vehicles[0]?.ownerName || g.ownerName || ""),
-        ownerMobile: String(vehicles[0]?.ownerMobile || g.ownerMobile || ""),
-        vehicles,
+        vehicles: ((data.vehicles as Record<string, unknown>[]) || []).map(toVehicle),
+        groups: ((data.groups as Array<Record<string, unknown>>) || []).map((g) => {
+          const vehicles = ((g.vehicles as Record<string, unknown>[]) || []).map(toVehicle);
+          // Prefer the vehicle document field — this is the source of truth from MongoDB
+          const rawType =
+            vehicles[0]?.vehicleOwnerType ??
+            (typeof g.vehicleOwnerType === "string" ? g.vehicleOwnerType : undefined);
+          const vehicleOwnerType: VehicleOwnerType =
+            String(rawType ?? "owner").toLowerCase() === "renter" ? "renter" : "owner";
+
+          return {
+            key: String(g.key ?? `${g.floorNumber}-${g.flatNumber}-${vehicleOwnerType}`),
+            floorNumber: Number(g.floorNumber),
+            flatNumber: String(g.flatNumber ?? ""),
+            vehicleOwnerType,
+            ownerName: String(vehicles[0]?.ownerName || g.ownerName || ""),
+            ownerMobile: String(vehicles[0]?.ownerMobile || g.ownerMobile || ""),
+            vehicles,
+          };
+        }),
+        summary: {
+          total: Number((data.summary as VehicleSummary)?.total) || 0,
+          cars: Number((data.summary as VehicleSummary)?.cars) || 0,
+          bikes: Number((data.summary as VehicleSummary)?.bikes) || 0,
+          autos: Number((data.summary as VehicleSummary)?.autos) || 0,
+          twoWheel: Number((data.summary as VehicleSummary)?.twoWheel) || 0,
+          noSticker: Number((data.summary as VehicleSummary)?.noSticker) || 0,
+        },
       };
-    }),
-    summary: {
-      total: Number((data.summary as VehicleSummary)?.total) || 0,
-      cars: Number((data.summary as VehicleSummary)?.cars) || 0,
-      bikes: Number((data.summary as VehicleSummary)?.bikes) || 0,
-      autos: Number((data.summary as VehicleSummary)?.autos) || 0,
-      twoWheel: Number((data.summary as VehicleSummary)?.twoWheel) || 0,
-      noSticker: Number((data.summary as VehicleSummary)?.noSticker) || 0,
     },
-  };
+    { force: params.force }
+  );
 }
 
 /** POST /api/vehicles — single vehicle */

@@ -1,3 +1,5 @@
+import { CacheKeys, cachedQuery } from "@/lib/data-cache";
+
 export interface NoticeRecord {
   id: string;
   title: string;
@@ -41,13 +43,17 @@ async function parseJson(res: Response) {
 }
 
 export async function readNotices(params: { q?: string; limit?: number } = {}): Promise<NoticeRecord[]> {
-  const sp = new URLSearchParams();
-  if (params.q?.trim()) sp.set("q", params.q.trim());
-  if (params.limit && params.limit > 0) sp.set("limit", String(params.limit));
-  const qs = sp.toString();
-  const res = await fetch(`/api/notices${qs ? `?${qs}` : ""}`, { cache: "no-store" });
-  const data = await parseJson(res);
-  return ((data.notices as Record<string, unknown>[]) || []).map(toNotice);
+  const q = params.q?.trim() || "";
+  const limit = params.limit && params.limit > 0 ? params.limit : 0;
+  return cachedQuery(CacheKeys.notices(q, limit), async () => {
+    const sp = new URLSearchParams();
+    if (q) sp.set("q", q);
+    if (limit > 0) sp.set("limit", String(limit));
+    const qs = sp.toString();
+    const res = await fetch(`/api/notices${qs ? `?${qs}` : ""}`, { cache: "no-store" });
+    const data = await parseJson(res);
+    return ((data.notices as Record<string, unknown>[]) || []).map(toNotice);
+  });
 }
 
 export async function createNotice(input: NoticeInput): Promise<NoticeRecord> {

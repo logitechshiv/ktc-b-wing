@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Home } from "lucide-react";
 import { inr } from "@/lib/format";
-import type { SafeUser } from "@/lib/auth-client";
+import { readCurrentUser, type SafeUser } from "@/lib/auth-client";
 import {
   createPurpose,
   deletePurpose,
@@ -29,8 +29,9 @@ import {
   type CollectPersonOption,
   type PaymentMode,
 } from "@/lib/payments-api";
-import { readFlats, type FlatRecord } from "@/lib/flats-api";
+import { readFlats, type FlatRecord, type FloorGroup } from "@/lib/flats-api";
 import type { PurposePaidFlat, PurposePendingFlat } from "@/lib/payment-purposes-api";
+import { CacheKeys, peekCache } from "@/lib/data-cache";
 import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
 import PurposeModal from "@/components/collections/PurposeModal";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
@@ -132,21 +133,48 @@ function pickFirstPurpose(list: PurposeRecord[]): PurposeRecord | null {
   return sorted.find((p) => p.isActive) || sorted[0] || null;
 }
 
+type PurposesCachePayload = { purposes: PurposeRecord[]; stats: PurposeStat[] };
+
+function readCachedCollectionBootstrap(): {
+  purposes: PurposeRecord[];
+  stats: PurposeStat[];
+  flats: FlatRecord[];
+  ready: boolean;
+  firstId: string;
+} {
+  const cachedPurposes = peekCache<PurposesCachePayload>(CacheKeys.purposes(false));
+  const cachedFloors = peekCache<FloorGroup[]>(CacheKeys.flats("", "all"));
+  if (!cachedPurposes) {
+    return { purposes: [], stats: [], flats: [], ready: false, firstId: "" };
+  }
+  const flats = cachedFloors ? cachedFloors.flatMap((f) => f.flats) : [];
+  const first = pickFirstPurpose(cachedPurposes.purposes);
+  return {
+    purposes: cachedPurposes.purposes,
+    stats: cachedPurposes.stats,
+    flats,
+    ready: true,
+    firstId: first?.id ?? "",
+  };
+}
+
 export default function CollectionsPage() {
   const router = useRouter();
   const [user, setUser] = useState<SafeUser | null>(null);
   const isSuperAdmin = user?.role === "super_admin";
 
+  const bootstrap = readCachedCollectionBootstrap();
+
   const [flatQ, setFlatQ] = useState("");
-  const [purposeFilterId, setPurposeFilterId] = useState("");
-  const [purposeReady, setPurposeReady] = useState(false);
+  const [purposeFilterId, setPurposeFilterId] = useState(bootstrap.firstId);
+  const [purposeReady, setPurposeReady] = useState(bootstrap.ready);
   const [modeFilter, setModeFilter] = useState<"all" | PaymentMode>("all");
   const [statusFilter, setStatusFilter] = useState<"paid" | "pending">("paid");
 
-  const [purposes, setPurposes] = useState<PurposeRecord[]>([]);
-  const [purposeStats, setPurposeStats] = useState<PurposeStat[]>([]);
+  const [purposes, setPurposes] = useState<PurposeRecord[]>(bootstrap.purposes);
+  const [purposeStats, setPurposeStats] = useState<PurposeStat[]>(bootstrap.stats);
 
-  const [flats, setFlats] = useState<FlatRecord[]>([]);
+  const [flats, setFlats] = useState<FlatRecord[]>(bootstrap.flats);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -201,59 +229,80 @@ export default function CollectionsPage() {
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
 
   /** Filter-bar summary + pending sold flats for the selected Purpose only */
-  const [filterDetails, setFilterDetails] = useState<PurposeDetails | null>(null);
+  const [filterDetails, setFilterDetails] = useState<PurposeDetails | null>(() =>
+    bootstrap.firstId
+      ? peekCache<PurposeDetails>(CacheKeys.purposeDetails(bootstrap.firstId)) ?? null
+      : null
+  );
   const [filterDetailsLoading, setFilterDetailsLoading] = useState(false);
 
   useEffect(() => {
-    fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) {
-          setUser(null);
-          return;
-        }
-        const data = await res.json();
-        setUser(data.user ?? null);
-      })
+    void readCurrentUser()
+      .then((u) => setUser(u))
       .catch(() => setUser(null));
   }, []);
 
-  const loadPurposes = useCallback(async () => {
-    const data = await readPurposes();
+  const loadPurposes = useCallback(async (opts?: { force?: boolean }) => {
+    const data = await readPurposes(false, { force: opts?.force });
     setPurposes(data.purposes);
     setPurposeStats(data.stats);
     return data.purposes;
   }, []);
 
-  const load = useCallback(async () => {
+  const applyPurposeSelection = useCallback((purposeList: PurposeRecord[]) => {
+    const first = pickFirstPurpose(purposeList);
+    setPurposeFilterId((current) => {
+      if (current && purposeList.some((p) => p.id === current)) return current;
+      return first?.id ?? "";
+    });
+    setFormPurposeId((current) => {
+      if (current && purposeList.some((p) => p.id === current)) return current;
+      if (first) {
+        setFormAmount(first.amountPerFlat ?? first.amount);
+        return first.id;
+      }
+      return "";
+    });
+  }, []);
+
+  const load = useCallback(async (opts?: { force?: boolean }) => {
+    const force = !!opts?.force;
     setError(null);
+
+    if (!force) {
+      const cachedPurposes = peekCache<PurposesCachePayload>(CacheKeys.purposes(false));
+      const cachedFloors = peekCache<FloorGroup[]>(CacheKeys.flats("", "all"));
+      if (cachedPurposes && cachedFloors) {
+        setPurposes(cachedPurposes.purposes);
+        setPurposeStats(cachedPurposes.stats);
+        setFlats(cachedFloors.flatMap((f) => f.flats));
+        setPurposeReady(true);
+        applyPurposeSelection(cachedPurposes.purposes);
+        return;
+      }
+    }
+
     try {
-      const purposeList = await loadPurposes();
-      const floors = await readFlats({ status: "all" });
+      const purposeList = await loadPurposes({ force });
+      const floors = await readFlats({ status: "all", force });
       const flatList = floors.flatMap((f) => f.flats);
       setFlats(flatList);
       setPurposeReady(true);
-
-      const first = pickFirstPurpose(purposeList);
-      setPurposeFilterId((current) => {
-        if (current && purposeList.some((p) => p.id === current)) return current;
-        return first?.id ?? "";
-      });
-
-      setFormPurposeId((current) => {
-        if (current && purposeList.some((p) => p.id === current)) return current;
-        if (first) {
-          setFormAmount(first.amountPerFlat ?? first.amount);
-          return first.id;
-        }
-        return "";
-      });
+      applyPurposeSelection(purposeList);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load payments");
       setPurposeReady(true);
     }
-  }, [loadPurposes]);
+  }, [loadPurposes, applyPurposeSelection]);
 
   useEffect(() => {
+    if (
+      peekCache(CacheKeys.purposes(false)) &&
+      peekCache(CacheKeys.flats("", "all"))
+    ) {
+      void load();
+      return;
+    }
     const t = window.setTimeout(() => {
       void load();
     }, 250);
@@ -307,9 +356,10 @@ export default function CollectionsPage() {
       setFormSelectedKeys([]);
       return;
     }
-    setFormPendingLoading(true);
+    const cached = peekCache<PurposeDetails>(CacheKeys.purposeDetails(purposeIdValue));
+    if (!cached) setFormPendingLoading(true);
     try {
-      const details = await readPurposeDetails(purposeIdValue);
+      const details = cached ?? (await readPurposeDetails(purposeIdValue));
       const collectable = details.pending.filter(
         (f) => f.hasOwner && f.flatStatus !== "available"
       );
@@ -451,11 +501,19 @@ export default function CollectionsPage() {
     setPurposeModalOpen(true);
   }
 
-  const loadPurposeDetails = useCallback(async (id: string, opts?: { silent?: boolean }) => {
+  const loadPurposeDetails = useCallback(async (id: string, opts?: { silent?: boolean; force?: boolean }) => {
     setPurposeDetailsError(null);
+    if (!opts?.force) {
+      const cached = peekCache<PurposeDetails>(CacheKeys.purposeDetails(id));
+      if (cached) {
+        setPurposeDetails(cached);
+        setPurposeDetailsLoading(false);
+        return;
+      }
+    }
     if (!opts?.silent) setPurposeDetailsLoading(true);
     try {
-      const details = await readPurposeDetails(id);
+      const details = await readPurposeDetails(id, { force: opts?.force });
       setPurposeDetails(details);
     } catch (err) {
       setPurposeDetails(null);
@@ -465,15 +523,23 @@ export default function CollectionsPage() {
     }
   }, []);
 
-  const loadFilterPurposeDetails = useCallback(async (id: string) => {
+  const loadFilterPurposeDetails = useCallback(async (id: string, opts?: { force?: boolean }) => {
     if (!id) {
       setFilterDetails(null);
       setFilterDetailsLoading(false);
       return;
     }
+    if (!opts?.force) {
+      const cached = peekCache<PurposeDetails>(CacheKeys.purposeDetails(id));
+      if (cached) {
+        setFilterDetails(cached);
+        setFilterDetailsLoading(false);
+        return;
+      }
+    }
     setFilterDetailsLoading(true);
     try {
-      const details = await readPurposeDetails(id);
+      const details = await readPurposeDetails(id, { force: opts?.force });
       setFilterDetails(details);
     } catch {
       setFilterDetails(null);
@@ -520,12 +586,12 @@ export default function CollectionsPage() {
   useEffect(() => {
     return subscribeDataChanged((source) => {
       if (source === "payment" || source === "purpose" || source === "flat" || source === "unknown") {
-        void load();
+        void load({ force: true });
         if (expandedPurposeId) {
-          void loadPurposeDetails(expandedPurposeId, { silent: true });
+          void loadPurposeDetails(expandedPurposeId, { silent: true, force: true });
         }
         if (selectedPurposeId) {
-          void loadFilterPurposeDetails(selectedPurposeId);
+          void loadFilterPurposeDetails(selectedPurposeId, { force: true });
         }
       }
     });
@@ -546,11 +612,11 @@ export default function CollectionsPage() {
       }
       setPurposeModalOpen(false);
       setEditingPurpose(null);
-      await loadPurposes();
-      if (purposeModalMode === "edit" && expandedPurposeId) {
-        void loadPurposeDetails(expandedPurposeId);
-      }
       notifyDataChanged("purpose");
+      await load({ force: true });
+      if (purposeModalMode === "edit" && expandedPurposeId) {
+        void loadPurposeDetails(expandedPurposeId, { force: true });
+      }
     } catch (err) {
       setPurposeModalError(err instanceof Error ? err.message : "Unable to save purpose");
     } finally {
@@ -567,14 +633,14 @@ export default function CollectionsPage() {
       const removedId = deletePurposeTarget.id;
       setDeletePurposeTarget(null);
       flashSuccess("Purpose deleted");
-      const remaining = await loadPurposes();
+      notifyDataChanged("purpose");
+      const remaining = await loadPurposes({ force: true });
       if (expandedPurposeId === removedId) {
         setExpandedPurposeId(null);
       }
       if (purposeFilterId === removedId) {
         setPurposeFilterId(pickFirstPurpose(remaining)?.id ?? "");
       }
-      notifyDataChanged("purpose");
     } catch (err) {
       setDeletePurposeError(
         err instanceof Error
@@ -631,11 +697,11 @@ export default function CollectionsPage() {
       });
       flashSuccess("Collection updated");
       setEditingPayment(null);
-      await loadPurposes();
-      if (expandedPurposeId) {
-        await loadPurposeDetails(expandedPurposeId, { silent: true });
-      }
       notifyDataChanged("payment");
+      await load({ force: true });
+      if (expandedPurposeId) {
+        await loadPurposeDetails(expandedPurposeId, { silent: true, force: true });
+      }
     } catch (err) {
       setEditPaymentError(err instanceof Error ? err.message : "Unable to update collection");
     } finally {
@@ -651,11 +717,11 @@ export default function CollectionsPage() {
       await deletePayment(deletePaymentTarget.paymentId);
       setDeletePaymentTarget(null);
       flashSuccess("Collection deleted");
-      await loadPurposes();
-      if (expandedPurposeId) {
-        await loadPurposeDetails(expandedPurposeId, { silent: true });
-      }
       notifyDataChanged("payment");
+      await load({ force: true });
+      if (expandedPurposeId) {
+        await loadPurposeDetails(expandedPurposeId, { silent: true, force: true });
+      }
     } catch (err) {
       setDeletePaymentError(
         err instanceof Error
@@ -771,13 +837,13 @@ export default function CollectionsPage() {
       });
       flashSuccess(result.message);
       closeCollectForm();
-      await loadPurposes();
+      notifyDataChanged("payment");
+      await load({ force: true });
       if (expandedPurposeId) {
-        await loadPurposeDetails(expandedPurposeId, { silent: true });
+        await loadPurposeDetails(expandedPurposeId, { silent: true, force: true });
       } else if (savedPurposeId) {
         setExpandedPurposeId(savedPurposeId);
       }
-      notifyDataChanged("payment");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save collection");
     } finally {
@@ -878,9 +944,8 @@ export default function CollectionsPage() {
       skipDetailsReloadRef.current = true;
       setExpandedPurposeId(purpose.id);
       setPurposeFilterId(purpose.id);
-      // Refresh purpose progress stats only (no full remount)
-      void loadPurposes();
       notifyDataChanged("payment");
+      void load({ force: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save builder payment");
     } finally {

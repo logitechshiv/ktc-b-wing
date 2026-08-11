@@ -1,3 +1,5 @@
+import { CacheKeys, cachedQuery } from "@/lib/data-cache";
+
 export interface ExpenseByCategory {
   category: string;
   amount: number;
@@ -72,58 +74,60 @@ async function parseJson(res: Response) {
 }
 
 export async function readDashboard(): Promise<DashboardStats> {
-  const res = await fetch("/api/dashboard", { cache: "no-store" });
-  const data = await parseJson(res);
-  return {
-    totalBalance: Number(data.totalBalance) || 0,
-    totalCollection: Number(data.totalCollection) || 0,
-    totalExpense: Number(data.totalExpense) || 0,
-    cashInHand: Math.max(0, Number(data.cashInHand) || 0),
-    bankBalance: Number(data.bankBalance) || 0,
-    flats: {
-      total: Number(data.flats?.total) || 0,
-      sold: Number(data.flats?.sold) || 0,
-      available: Number(data.flats?.available) || 0,
-    },
-    vehicles: {
-      fourWheelers: Number(data.vehicles?.fourWheelers) || 0,
-      twoWheelers: Number(data.vehicles?.twoWheelers) || 0,
-      threeWheelers: Number(data.vehicles?.threeWheelers) || 0,
-    },
-    expensesByCategory: Array.isArray(data.expensesByCategory)
-      ? (data.expensesByCategory as ExpenseByCategory[]).map((row) => ({
-          category: String(row.category || ""),
-          amount: Number(row.amount) || 0,
-        }))
-      : [],
-    byPaymentMode: Array.isArray(data.byPaymentMode)
-      ? (data.byPaymentMode as PaymentModeBreakdown[]).map((row) => ({
-          mode: String(row.mode || ""),
-          label: String(row.label || row.mode || ""),
-          collected: Number(row.collected) || 0,
-          spent: Number(row.spent) || 0,
-        }))
-      : EMPTY_DASHBOARD.byPaymentMode,
-    recentExpenses: Array.isArray(data.recentExpenses)
-      ? (data.recentExpenses as DashboardRecentExpense[]).map((row) => ({
-          id: String(row.id || ""),
-          category: String(row.category || ""),
-          expenseTitleGujarati:
-            String(row.expenseTitleGujarati || "").trim() ||
-            String((row as { expenseTitle?: string }).expenseTitle || "").trim(),
-          amount: Number(row.amount) || 0,
-          displayOrder: Number(row.displayOrder) || 0,
-          paymentMethod: String(row.paymentMethod || ""),
-          expenseDate: String(row.expenseDate || "").slice(0, 10),
-          billImage: String(row.billImage || ""),
-          billImages: Array.isArray(row.billImages)
-            ? row.billImages.map((u) => String(u || "").trim()).filter(Boolean)
-            : String(row.billImage || "").trim()
-              ? [String(row.billImage).trim()]
-              : [],
-          notes: String(row.notes || ""),
-          whatsappShared: !!row.whatsappShared,
-        }))
-      : [],
-  };
+  return cachedQuery(CacheKeys.dashboard(), async () => {
+    const res = await fetch("/api/dashboard", { cache: "no-store" });
+    const data = await parseJson(res);
+    return {
+      totalBalance: Number(data.totalBalance) || 0,
+      totalCollection: Number(data.totalCollection) || 0,
+      totalExpense: Number(data.totalExpense) || 0,
+      cashInHand: Math.max(0, Number(data.cashInHand) || 0),
+      bankBalance: Number(data.bankBalance) || 0,
+      flats: {
+        total: Number(data.flats?.total) || 0,
+        sold: Number(data.flats?.sold) || 0,
+        available: Number(data.flats?.available) || 0,
+      },
+      vehicles: {
+        fourWheelers: Number(data.vehicles?.fourWheelers) || 0,
+        twoWheelers: Number(data.vehicles?.twoWheelers) || 0,
+        threeWheelers: Number(data.vehicles?.threeWheelers) || 0,
+      },
+      expensesByCategory: Array.isArray(data.expensesByCategory)
+        ? (data.expensesByCategory as ExpenseByCategory[]).map((row) => ({
+            category: String(row.category || ""),
+            amount: Number(row.amount) || 0,
+          }))
+        : [],
+      byPaymentMode: Array.isArray(data.byPaymentMode)
+        ? (data.byPaymentMode as PaymentModeBreakdown[]).map((row) => ({
+            mode: String(row.mode || ""),
+            label: String(row.label || row.mode || ""),
+            collected: Number(row.collected) || 0,
+            spent: Number(row.spent) || 0,
+          }))
+        : EMPTY_DASHBOARD.byPaymentMode,
+      recentExpenses: Array.isArray(data.recentExpenses)
+        ? (data.recentExpenses as DashboardRecentExpense[]).map((row) => ({
+            id: String(row.id || ""),
+            category: String(row.category || ""),
+            expenseTitleGujarati:
+              String(row.expenseTitleGujarati || "").trim() ||
+              String((row as { expenseTitle?: string }).expenseTitle || "").trim(),
+            amount: Number(row.amount) || 0,
+            displayOrder: Number(row.displayOrder) || 0,
+            paymentMethod: String(row.paymentMethod || ""),
+            expenseDate: String(row.expenseDate || "").slice(0, 10),
+            billImage: String(row.billImage || ""),
+            billImages: Array.isArray(row.billImages)
+              ? row.billImages.map((u) => String(u || "").trim()).filter(Boolean)
+              : String(row.billImage || "").trim()
+                ? [String(row.billImage).trim()]
+                : [],
+            notes: String(row.notes || ""),
+            whatsappShared: !!row.whatsappShared,
+          }))
+        : [],
+    };
+  });
 }

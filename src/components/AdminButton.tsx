@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { LogOut, Loader2 } from "lucide-react";
 import type { SafeUser } from "@/lib/auth-client";
+import { readCurrentUser } from "@/lib/auth-client";
+import { CacheKeys, invalidateCache } from "@/lib/data-cache";
 
 /** Header CTA — Admin login for guests, Logout for Super Admin */
 export default function AdminButton() {
@@ -11,15 +13,8 @@ export default function AdminButton() {
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
-    fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) {
-          setUser(null);
-          return;
-        }
-        const data = await res.json();
-        setUser(data.user ?? null);
-      })
+    void readCurrentUser()
+      .then((u) => setUser(u))
       .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
@@ -35,6 +30,7 @@ export default function AdminButton() {
         credentials: "same-origin",
         cache: "no-store",
       });
+      invalidateCache(CacheKeys.authMe());
       window.location.assign("/");
     } catch {
       setLoggingOut(false);

@@ -1,3 +1,5 @@
+import { CacheKeys, cachedQuery, invalidateCache } from "@/lib/data-cache";
+
 export type NotificationType =
   | "FLAT_ADDED"
   | "FLAT_UPDATED"
@@ -218,12 +220,14 @@ export function guestMarkRead(id: string) {
   const readIds = readIdSet(GUEST_READ_KEY);
   readIds.add(id);
   writeIdSet(GUEST_READ_KEY, readIds);
+  invalidateCache("notifications:*");
 }
 
 export function guestMarkAllRead(ids: string[]) {
   const readIds = readIdSet(GUEST_READ_KEY);
   for (const id of ids) readIds.add(id);
   writeIdSet(GUEST_READ_KEY, readIds);
+  invalidateCache("notifications:*");
 }
 
 export function guestHideNotification(id: string) {
@@ -236,45 +240,55 @@ export function guestHideNotification(id: string) {
 /**
  * Public feed for everyone. Uses auth read-state when logged in.
  * Guests get feed + localStorage read tracking.
+ * Pass `force: true` to bypass cache (e.g. notification bell poll).
  */
 export async function readNotificationsForEveryone(params: {
   limit?: number;
   status?: "all" | "unread" | "read";
+  force?: boolean;
 } = {}): Promise<{
   notifications: UserNotification[];
   unreadCount: number;
   authenticated: boolean;
 }> {
-  const sp = new URLSearchParams();
-  if (params.limit) sp.set("limit", String(params.limit));
-  // Always fetch all from server for guests; filter locally after read-state
-  if (params.status && params.status !== "all") sp.set("status", "all");
-  else if (params.status) sp.set("status", params.status);
+  const limit = params.limit && params.limit > 0 ? params.limit : 50;
+  const status = params.status || "all";
+  return cachedQuery(
+    CacheKeys.notifications(status, limit),
+    async () => {
+      const sp = new URLSearchParams();
+      sp.set("limit", String(limit));
+      // Always fetch all from server for guests; filter locally after read-state
+      if (params.status && params.status !== "all") sp.set("status", "all");
+      else if (params.status) sp.set("status", params.status);
 
-  const res = await fetch(`/api/notifications/public?${sp.toString()}`, {
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  const data = await parseJson(res);
-  const authenticated = !!data.authenticated;
-  let notifications = ((data.notifications as Record<string, unknown>[]) || []).map(
-    toNotification
+      const res = await fetch(`/api/notifications/public?${sp.toString()}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const data = await parseJson(res);
+      const authenticated = !!data.authenticated;
+      let notifications = ((data.notifications as Record<string, unknown>[]) || []).map(
+        toNotification
+      );
+      let unreadCount = Number(data.unreadCount) || 0;
+
+      if (!authenticated) {
+        const guest = applyGuestReadState(notifications);
+        notifications = guest.notifications;
+        unreadCount = guest.unreadCount;
+      }
+
+      if (params.status === "unread") {
+        notifications = notifications.filter((n) => !n.isRead);
+      } else if (params.status === "read") {
+        notifications = notifications.filter((n) => n.isRead);
+      }
+
+      return { notifications, unreadCount, authenticated };
+    },
+    { force: params.force }
   );
-  let unreadCount = Number(data.unreadCount) || 0;
-
-  if (!authenticated) {
-    const guest = applyGuestReadState(notifications);
-    notifications = guest.notifications;
-    unreadCount = guest.unreadCount;
-  }
-
-  if (params.status === "unread") {
-    notifications = notifications.filter((n) => !n.isRead);
-  } else if (params.status === "read") {
-    notifications = notifications.filter((n) => n.isRead);
-  }
-
-  return { notifications, unreadCount, authenticated };
 }
 
 export async function readNotifications(params: {
@@ -319,6 +333,7 @@ export async function markNotificationRead(
     };
   }
   const data = await parseJson(res);
+  invalidateCache("notifications:*");
   return {
     notification: toNotification(data.notification as Record<string, unknown>),
     unreadCount: Number(data.unreadCount) || 0,
@@ -346,6 +361,7 @@ export async function markAllNotificationsRead(
     return data.unreadCount;
   }
   const data = await parseJson(res);
+  invalidateCache("notifications:*");
   return Number(data.unreadCount) || 0;
 }
 
@@ -356,4 +372,5 @@ export async function deleteNotification(id: string): Promise<void> {
     cache: "no-store",
   });
   await parseJson(res);
+  invalidateCache("notifications:*");
 }

@@ -13,6 +13,7 @@ import {
 } from "@/lib/dashboard-api";
 import { readNotices, type NoticeRecord } from "@/lib/notices-api";
 import { subscribeDataChanged } from "@/lib/data-sync";
+import { CacheKeys, peekCache } from "@/lib/data-cache";
 import ExpenseRow from "@/components/ExpenseRow";
 import SummaryTile from "@/components/SummaryTile";
 import NoticeCard from "@/components/NoticeCard";
@@ -38,11 +39,13 @@ function toExpenseRow(e: DashboardRecentExpense) {
 }
 
 export default function DashboardHome() {
-  const [dash, setDash] = useState<DashboardStats>(EMPTY_DASHBOARD);
-  const [loading, setLoading] = useState(true);
+  const cachedDash = peekCache<DashboardStats>(CacheKeys.dashboard());
+  const cachedNotices = peekCache<NoticeRecord[]>(CacheKeys.notices("", 3));
+  const [dash, setDash] = useState<DashboardStats>(cachedDash ?? EMPTY_DASHBOARD);
+  const [loading, setLoading] = useState(!cachedDash);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [latestNotices, setLatestNotices] = useState<NoticeRecord[]>([]);
-  const [noticesLoading, setNoticesLoading] = useState(true);
+  const [latestNotices, setLatestNotices] = useState<NoticeRecord[]>(cachedNotices ?? []);
+  const [noticesLoading, setNoticesLoading] = useState(!cachedNotices);
   const [openNoticeId, setOpenNoticeId] = useState<string | null>(null);
 
   const mock = mockStats();

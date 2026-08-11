@@ -1,7 +1,10 @@
 /**
- * Cross-page live data sync for the dashboard (and other listeners).
- * Mutations call `notifyDataChanged`; Dashboard subscribes and refetches.
+ * Cross-page live data sync.
+ * Mutations call `notifyDataChanged` (invalidates shared cache + notifies listeners).
+ * Dashboard and module pages subscribe and refetch only after real data changes.
  */
+
+import { invalidateCacheForSource } from "@/lib/data-cache";
 
 export type DataChangeSource =
   | "payment"
@@ -18,6 +21,8 @@ const STORAGE_KEY = "ktc:data-changed";
 
 export function notifyDataChanged(source: DataChangeSource = "unknown") {
   if (typeof window === "undefined") return;
+  // Drop stale cache before listeners refetch so they hit the network once.
+  invalidateCacheForSource(source);
   const payload = { source, at: Date.now() };
   try {
     window.dispatchEvent(new CustomEvent(EVENT, { detail: payload }));
@@ -43,26 +48,23 @@ export function subscribeDataChanged(handler: (source: DataChangeSource) => void
     if (e.key !== STORAGE_KEY || !e.newValue) return;
     try {
       const parsed = JSON.parse(e.newValue) as { source?: DataChangeSource };
+      // Other tab already mutated — drop local cache then notify.
+      invalidateCacheForSource(parsed.source || "unknown");
       handler(parsed.source || "unknown");
     } catch {
+      invalidateCacheForSource("unknown");
       handler("unknown");
     }
   };
 
-  const onFocus = () => handler("unknown");
-  const onVisible = () => {
-    if (document.visibilityState === "visible") handler("unknown");
-  };
+  // Intentionally no window focus / visibility refetch — navigation and tab focus
+  // must reuse the shared cache until a real CRUD notify invalidates it.
 
   window.addEventListener(EVENT, onCustom);
   window.addEventListener("storage", onStorage);
-  window.addEventListener("focus", onFocus);
-  document.addEventListener("visibilitychange", onVisible);
 
   return () => {
     window.removeEventListener(EVENT, onCustom);
     window.removeEventListener("storage", onStorage);
-    window.removeEventListener("focus", onFocus);
-    document.removeEventListener("visibilitychange", onVisible);
   };
 }

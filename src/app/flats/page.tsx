@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatPhone } from "@/lib/format";
-import type { SafeUser } from "@/lib/auth-client";
+import { readCurrentUser, type SafeUser } from "@/lib/auth-client";
 import {
   createFlat,
   deleteFlat,
@@ -13,9 +13,14 @@ import {
   type FlatStatus,
   type FloorGroup,
 } from "@/lib/flats-api";
+import { CacheKeys, peekCache, setCache } from "@/lib/data-cache";
 import { notifyDataChanged } from "@/lib/data-sync";
 import PlotDetailsModal from "@/components/flats/PlotDetailsModal";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
+
+function flatsCacheKey(q: string, status: FlatStatus | "all") {
+  return CacheKeys.flats(q.trim(), status);
+}
 
 const BADGE_COLORS = [
   "bg-sky-500",
@@ -42,8 +47,9 @@ function statusLabel(status: FlatStatus) {
 export default function FlatsPage() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<FlatStatus | "all">("all");
-  const [floors, setFloors] = useState<FloorGroup[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCached = peekCache<FloorGroup[]>(flatsCacheKey("", "all"));
+  const [floors, setFloors] = useState<FloorGroup[]>(initialCached ?? []);
+  const [loading, setLoading] = useState(!initialCached);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -62,24 +68,27 @@ export default function FlatsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) {
-          setUser(null);
-          return;
-        }
-        const data = await res.json();
-        setUser(data.user ?? null);
-      })
+    void readCurrentUser()
+      .then((u) => setUser(u))
       .catch(() => setUser(null));
   }, []);
 
-  const load = useCallback(async (opts?: { silent?: boolean }) => {
+  const load = useCallback(async (opts?: { silent?: boolean; force?: boolean }) => {
     const silent = !!opts?.silent;
+    const force = !!opts?.force;
+    if (!force) {
+      const cached = peekCache<FloorGroup[]>(flatsCacheKey(q, status));
+      if (cached) {
+        setFloors(cached);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+    }
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const data = await readFlats({ q, status });
+      const data = await readFlats({ q, status, force });
       setFloors(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load flats");
@@ -90,11 +99,16 @@ export default function FlatsPage() {
   }, [q, status]);
 
   useEffect(() => {
+    // Warm cache: show instantly. Cold cache: debounce search typing only.
+    if (peekCache(flatsCacheKey(q, status))) {
+      void load();
+      return;
+    }
     const t = window.setTimeout(() => {
       void load();
     }, 250);
     return () => window.clearTimeout(t);
-  }, [load]);
+  }, [load, q, status]);
 
   function flashSuccess(msg: string) {
     setSuccess(msg);
@@ -103,8 +117,8 @@ export default function FlatsPage() {
 
   /** Update one flat in place — no list remount / no scroll jump. */
   function patchFlatInPlace(updated: FlatRecord) {
-    setFloors((prev) =>
-      prev.map((floor) => {
+    setFloors((prev) => {
+      const next = prev.map((floor) => {
         if (floor.floorNumber !== updated.floorNumber) return floor;
         const flats = floor.flats.map((f) => (f.id === updated.id ? { ...f, ...updated } : f));
         let sold = 0;
@@ -123,8 +137,10 @@ export default function FlatsPage() {
           available,
           total: flats.length,
         };
-      })
-    );
+      });
+      setCache(flatsCacheKey(q, status), next);
+      return next;
+    });
   }
 
   /** Keep scroll where it was; ensure the edited flat stays visible. */
@@ -194,6 +210,11 @@ export default function FlatsPage() {
         flashSuccess("Plot details updated");
         restoreScrollAfterEdit(editedId, scrollY);
         notifyDataChanged("flat");
+        // notify clears flats cache — re-warm with the patched list for instant remount
+        setFloors((prev) => {
+          setCache(flatsCacheKey(q, status), prev);
+          return prev;
+        });
       } else {
         const flatNo = String(data.flatNumber ?? "").trim();
         const duplicate = floors.some((floor) =>
@@ -206,8 +227,8 @@ export default function FlatsPage() {
         flashSuccess("Plot details saved");
         setModalOpen(false);
         setEditing(null);
-        await load();
         notifyDataChanged("flat");
+        await load({ force: true });
       }
     } catch (err) {
       setModalError(err instanceof Error ? err.message : "Unable to save");
@@ -224,8 +245,8 @@ export default function FlatsPage() {
       await deleteFlat(deleteTarget.id);
       setDeleteTarget(null);
       flashSuccess("Flat details removed — card kept as Unsold");
-      await load();
       notifyDataChanged("flat");
+      await load({ force: true });
     } catch (err) {
       setDeleteError(
         err instanceof Error ? err.message : "Unable to delete this record. Please try again."

@@ -1,4 +1,5 @@
 import { compareExpensesByCreatedAtDesc } from "@/lib/expense-utils";
+import { CacheKeys, cachedQuery } from "@/lib/data-cache";
 
 export type ExpensePaymentMethod = "cash" | "bank" | "upi" | "cheque";
 
@@ -100,10 +101,18 @@ async function parseJson(res: Response) {
   return data;
 }
 
-export async function readExpenseCategories(): Promise<ExpenseCategoryRecord[]> {
-  const res = await fetch("/api/expense-categories", { cache: "no-store" });
-  const data = await parseJson(res);
-  return ((data.categories as Record<string, unknown>[]) || []).map(toCategory);
+export async function readExpenseCategories(opts?: {
+  force?: boolean;
+}): Promise<ExpenseCategoryRecord[]> {
+  return cachedQuery(
+    CacheKeys.expenseCategories(),
+    async () => {
+      const res = await fetch("/api/expense-categories", { cache: "no-store" });
+      const data = await parseJson(res);
+      return ((data.categories as Record<string, unknown>[]) || []).map(toCategory);
+    },
+    { force: opts?.force }
+  );
 }
 
 export async function createExpenseCategory(
@@ -146,29 +155,39 @@ export async function deleteExpenseCategory(id: string): Promise<void> {
   await parseJson(res);
 }
 
-export async function readExpenses(params: ExpenseListParams = {}): Promise<{
+export async function readExpenses(
+  params: ExpenseListParams & { force?: boolean } = {}
+): Promise<{
   expenses: ExpenseRecord[];
   shownTotal: number;
   categories: string[];
   nextDisplayOrder: number;
   summary: { totalExpenses: number; totalAmount: number };
 }> {
-  const sp = new URLSearchParams();
-  if (params.q?.trim()) sp.set("q", params.q.trim());
-  if (params.category && params.category !== "all") sp.set("category", params.category);
+  const q = params.q?.trim() || "";
+  const category = params.category || "all";
+  return cachedQuery(
+    CacheKeys.expenses(q, category),
+    async () => {
+      const sp = new URLSearchParams();
+      if (q) sp.set("q", q);
+      if (category !== "all") sp.set("category", category);
 
-  const res = await fetch(`/api/expenses?${sp.toString()}`, { cache: "no-store" });
-  const data = await parseJson(res);
-  const expenses = ((data.expenses as Record<string, unknown>[]) || [])
-    .map(toExpense)
-    .sort(compareExpensesByCreatedAtDesc);
-  return {
-    expenses,
-    shownTotal: Number(data.shownTotal) || 0,
-    categories: (data.categories as string[]) || [],
-    nextDisplayOrder: Number(data.nextDisplayOrder) || 1,
-    summary: data.summary || { totalExpenses: 0, totalAmount: 0 },
-  };
+      const res = await fetch(`/api/expenses?${sp.toString()}`, { cache: "no-store" });
+      const data = await parseJson(res);
+      const expenses = ((data.expenses as Record<string, unknown>[]) || [])
+        .map(toExpense)
+        .sort(compareExpensesByCreatedAtDesc);
+      return {
+        expenses,
+        shownTotal: Number(data.shownTotal) || 0,
+        categories: (data.categories as string[]) || [],
+        nextDisplayOrder: Number(data.nextDisplayOrder) || 1,
+        summary: data.summary || { totalExpenses: 0, totalAmount: 0 },
+      };
+    },
+    { force: params.force }
+  );
 }
 
 export async function createExpense(input: ExpenseInput): Promise<ExpenseRecord> {

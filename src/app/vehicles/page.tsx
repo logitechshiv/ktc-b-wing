@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatPhone, formatPlate } from "@/lib/format";
-import type { SafeUser } from "@/lib/auth-client";
+import { readCurrentUser, type SafeUser } from "@/lib/auth-client";
 import {
   createVehicle,
   createVehicles,
@@ -16,9 +16,27 @@ import {
   type VehicleSummary,
   type VehicleType,
 } from "@/lib/vehicles-api";
+import { CacheKeys, peekCache } from "@/lib/data-cache";
 import { notifyDataChanged } from "@/lib/data-sync";
 import VehicleModal from "@/components/vehicles/VehicleModal";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
+
+const EMPTY_SUMMARY: VehicleSummary = {
+  total: 0,
+  cars: 0,
+  bikes: 0,
+  autos: 0,
+  twoWheel: 0,
+  noSticker: 0,
+};
+
+function vehiclesCacheKey(
+  q: string,
+  sticker: "all" | "yes" | "no",
+  type: VehicleType | "all"
+) {
+  return CacheKeys.vehicles(q.trim(), sticker, type);
+}
 
 const BADGE_COLORS = [
   "bg-sky-500",
@@ -98,16 +116,18 @@ export default function VehiclesPage() {
   const [typeFilter, setTypeFilter] = useState<VehicleType | "all">("all");
   const [copied, setCopied] = useState<string | null>(null);
 
-  const [groups, setGroups] = useState<VehicleGroup[]>([]);
-  const [summary, setSummary] = useState<VehicleSummary>({
-    total: 0,
-    cars: 0,
-    bikes: 0,
-    autos: 0,
-    twoWheel: 0,
-    noSticker: 0,
-  });
-  const [loading, setLoading] = useState(true);
+  const initialCached = peekCache<{
+    groups: VehicleGroup[];
+    summary: VehicleSummary;
+  }>(vehiclesCacheKey("", "all", "all"));
+
+  const [groups, setGroups] = useState<VehicleGroup[]>(
+    initialCached ? sortGroupsByFlatNumber(initialCached.groups) : []
+  );
+  const [summary, setSummary] = useState<VehicleSummary>(
+    initialCached?.summary ?? EMPTY_SUMMARY
+  );
+  const [loading, setLoading] = useState(!initialCached);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -125,19 +145,25 @@ export default function VehiclesPage() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) {
-          setUser(null);
-          return;
-        }
-        const data = await res.json();
-        setUser(data.user ?? null);
-      })
+    void readCurrentUser()
+      .then((u) => setUser(u))
       .catch(() => setUser(null));
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { force?: boolean }) => {
+    const force = !!opts?.force;
+    if (!force) {
+      const cached = peekCache<{ groups: VehicleGroup[]; summary: VehicleSummary }>(
+        vehiclesCacheKey(q, stickerFilter, typeFilter)
+      );
+      if (cached) {
+        setGroups(sortGroupsByFlatNumber(cached.groups));
+        setSummary(cached.summary);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+    }
     setLoading(true);
     setError(null);
     try {
@@ -145,24 +171,29 @@ export default function VehiclesPage() {
         q,
         sticker: stickerFilter,
         type: typeFilter,
+        force,
       });
       setGroups(sortGroupsByFlatNumber(data.groups));
       setSummary(data.summary);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load vehicles");
       setGroups([]);
-      setSummary({ total: 0, cars: 0, bikes: 0, autos: 0, twoWheel: 0, noSticker: 0 });
+      setSummary(EMPTY_SUMMARY);
     } finally {
       setLoading(false);
     }
   }, [q, stickerFilter, typeFilter]);
 
   useEffect(() => {
+    if (peekCache(vehiclesCacheKey(q, stickerFilter, typeFilter))) {
+      void load();
+      return;
+    }
     const t = window.setTimeout(() => {
       void load();
     }, 250);
     return () => window.clearTimeout(t);
-  }, [load]);
+  }, [load, q, stickerFilter, typeFilter]);
 
   function flashSuccess(msg: string) {
     setSuccess(msg);
@@ -210,8 +241,8 @@ export default function VehiclesPage() {
       }
       setModalOpen(false);
       setEditing(null);
-      await load();
       notifyDataChanged("vehicle");
+      await load({ force: true });
     } catch (err) {
       setModalError(err instanceof Error ? err.message : "Unable to save");
     } finally {
@@ -227,8 +258,8 @@ export default function VehiclesPage() {
       await deleteVehicle(deleteTarget.id);
       setDeleteTarget(null);
       flashSuccess("Vehicle deleted");
-      await load();
       notifyDataChanged("vehicle");
+      await load({ force: true });
     } catch (err) {
       setDeleteError(
         err instanceof Error ? err.message : "Unable to delete this record. Please try again."

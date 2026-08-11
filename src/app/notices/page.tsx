@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { SafeUser } from "@/lib/auth-client";
+import { readCurrentUser, type SafeUser } from "@/lib/auth-client";
 import {
   createNotice,
   deleteNotice,
@@ -37,15 +37,8 @@ export default function NoticesPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) {
-          setUser(null);
-          return;
-        }
-        const data = await res.json();
-        setUser(data.user ?? null);
-      })
+    void readCurrentUser()
+      .then((u) => setUser(u))
       .catch(() => setUser(null));
   }, []);
 

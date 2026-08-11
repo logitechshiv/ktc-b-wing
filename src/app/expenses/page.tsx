@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { inr } from "@/lib/format";
-import type { SafeUser } from "@/lib/auth-client";
+import { readCurrentUser, type SafeUser } from "@/lib/auth-client";
 import { displayExpenseTitle } from "@/lib/expense-utils";
 import {
   createExpense,
@@ -19,10 +19,23 @@ import {
   type ExpenseInput,
   type ExpenseRecord,
 } from "@/lib/expenses-api";
+import { CacheKeys, peekCache } from "@/lib/data-cache";
 import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
 import ExpenseRow from "@/components/ExpenseRow";
 import ExpenseModal from "@/components/expenses/ExpenseModal";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
+
+type ExpensesCachePayload = {
+  expenses: ExpenseRecord[];
+  shownTotal: number;
+  categories: string[];
+  nextDisplayOrder: number;
+  summary: { totalExpenses: number; totalAmount: number };
+};
+
+function expensesCacheKey(q: string, category: string) {
+  return CacheKeys.expenses(q.trim(), category || "all");
+}
 
 function toRow(e: ExpenseRecord) {
   return {
@@ -50,12 +63,19 @@ export default function ExpensesPage() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("all");
 
-  const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
-  const [managedCategories, setManagedCategories] = useState<ExpenseCategoryRecord[]>([]);
-  const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
-  const [shownTotal, setShownTotal] = useState(0);
-  const [summaryTotal, setSummaryTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const initialExpenses = peekCache<ExpensesCachePayload>(expensesCacheKey("", "all"));
+  const initialCategories = peekCache<ExpenseCategoryRecord[]>(CacheKeys.expenseCategories());
+
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>(initialExpenses?.expenses ?? []);
+  const [managedCategories, setManagedCategories] = useState<ExpenseCategoryRecord[]>(
+    initialCategories ?? []
+  );
+  const [expenseCategories, setExpenseCategories] = useState<string[]>(
+    initialExpenses?.categories ?? []
+  );
+  const [shownTotal, setShownTotal] = useState(initialExpenses?.shownTotal ?? 0);
+  const [summaryTotal, setSummaryTotal] = useState(initialExpenses?.summary.totalAmount ?? 0);
+  const [loading, setLoading] = useState(!initialExpenses);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
@@ -92,32 +112,38 @@ export default function ExpensesPage() {
   const canReorder = false;
 
   useEffect(() => {
-    fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) {
-          setUser(null);
-          return;
-        }
-        const data = await res.json();
-        setUser(data.user ?? null);
-      })
+    void readCurrentUser()
+      .then((u) => setUser(u))
       .catch(() => setUser(null));
   }, []);
 
-  const loadCategories = useCallback(async () => {
+  const loadCategories = useCallback(async (opts?: { force?: boolean }) => {
     try {
-      const list = await readExpenseCategories();
+      const list = await readExpenseCategories({ force: opts?.force });
       setManagedCategories(list);
     } catch {
-      setManagedCategories([]);
+      if (opts?.force) setManagedCategories([]);
     }
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { force?: boolean }) => {
+    const force = !!opts?.force;
+    if (!force) {
+      const cached = peekCache<ExpensesCachePayload>(expensesCacheKey(q, category));
+      if (cached) {
+        setExpenses(cached.expenses);
+        setShownTotal(cached.shownTotal);
+        setSummaryTotal(cached.summary.totalAmount);
+        setExpenseCategories(cached.categories || []);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+    }
     setLoading(true);
     setError(null);
     try {
-      const data = await readExpenses({ q, category });
+      const data = await readExpenses({ q, category, force });
       setExpenses(data.expenses);
       setShownTotal(data.shownTotal);
       setSummaryTotal(data.summary.totalAmount);
@@ -132,22 +158,30 @@ export default function ExpensesPage() {
   }, [q, category]);
 
   useEffect(() => {
+    if (peekCache(CacheKeys.expenseCategories())) {
+      void loadCategories();
+      return;
+    }
     void loadCategories();
   }, [loadCategories]);
 
   useEffect(() => {
+    if (peekCache(expensesCacheKey(q, category))) {
+      void load();
+      return;
+    }
     const t = window.setTimeout(() => {
       void load();
     }, 250);
     return () => window.clearTimeout(t);
-  }, [load]);
+  }, [load, q, category]);
 
   // Live refresh when expenses change elsewhere (dashboard, another tab)
   useEffect(() => {
     return subscribeDataChanged((source) => {
       if (source === "expense" || source === "unknown") {
-        void load();
-        void loadCategories();
+        void load({ force: true });
+        void loadCategories({ force: true });
       }
     });
   }, [load, loadCategories]);
@@ -194,8 +228,9 @@ export default function ExpensesPage() {
       }
       setModalOpen(false);
       setEditing(null);
-      await load();
       notifyDataChanged("expense");
+      await load({ force: true });
+      await loadCategories({ force: true });
     } catch (err) {
       setModalError(err instanceof Error ? err.message : "Unable to save expense");
     } finally {
@@ -212,8 +247,8 @@ export default function ExpensesPage() {
       await deleteExpense(deleteTarget.id);
       setDeleteTarget(null);
       setSuccess("Expense deleted");
-      await load();
       notifyDataChanged("expense");
+      await load({ force: true });
     } catch (err) {
       setDeleteError(
         err instanceof Error ? err.message : "Unable to delete this record. Please try again."
@@ -243,8 +278,8 @@ export default function ExpensesPage() {
       setNewCategoryName("");
       setNewCategoryIncludeCommon(false);
       setSuccess("Category added");
-      await loadCategories();
       notifyDataChanged("expense");
+      await loadCategories({ force: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to add category");
     } finally {
@@ -264,9 +299,9 @@ export default function ExpensesPage() {
       setEditingCategoryName("");
       setEditingCategoryIncludeCommon(false);
       setSuccess("Category updated");
-      await loadCategories();
-      await load();
       notifyDataChanged("expense");
+      await loadCategories({ force: true });
+      await load({ force: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to update category");
     } finally {
@@ -288,8 +323,8 @@ export default function ExpensesPage() {
       }
       setDeleteCategoryTarget(null);
       setSuccess("Category deleted");
-      await loadCategories();
       notifyDataChanged("expense");
+      await loadCategories({ force: true });
     } catch (err) {
       setDeleteCategoryError(
         err instanceof Error ? err.message : "Unable to delete this record. Please try again."
@@ -336,7 +371,7 @@ export default function ExpensesPage() {
       window.setTimeout(() => setSuccess(null), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save order");
-      await load();
+      await load({ force: true });
     } finally {
       setReordering(false);
     }

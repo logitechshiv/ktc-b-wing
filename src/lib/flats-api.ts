@@ -1,3 +1,5 @@
+import { CacheKeys, cachedQuery } from "@/lib/data-cache";
+
 export type FlatStatus = "available" | "sold" | "rent";
 
 export interface FlatRecord {
@@ -66,14 +68,24 @@ async function parseJson(res: Response) {
 }
 
 /** GET /api/flats — floors grouped, with optional search + status filter */
-export async function readFlats(params: FlatListParams = {}): Promise<FloorGroup[]> {
-  const sp = new URLSearchParams();
-  if (params.q?.trim()) sp.set("q", params.q.trim());
-  if (params.status && params.status !== "all") sp.set("status", params.status);
+export async function readFlats(
+  params: FlatListParams & { force?: boolean } = {}
+): Promise<FloorGroup[]> {
+  const q = params.q?.trim() || "";
+  const status = params.status || "all";
+  return cachedQuery(
+    CacheKeys.flats(q, status),
+    async () => {
+      const sp = new URLSearchParams();
+      if (q) sp.set("q", q);
+      if (status !== "all") sp.set("status", status);
 
-  const res = await fetch(`/api/flats?${sp.toString()}`, { cache: "no-store" });
-  const data = await parseJson(res);
-  return (data.floors as FloorGroup[]) ?? [];
+      const res = await fetch(`/api/flats?${sp.toString()}`, { cache: "no-store" });
+      const data = await parseJson(res);
+      return (data.floors as FloorGroup[]) ?? [];
+    },
+    { force: params.force }
+  );
 }
 
 /** GET /api/flats/[id] */

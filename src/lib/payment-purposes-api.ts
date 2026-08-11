@@ -2,6 +2,7 @@ import {
   normalizeCollectionScope,
   type CollectionScope,
 } from "@/lib/collection-scope";
+import { CacheKeys, cachedQuery } from "@/lib/data-cache";
 
 export type { CollectionScope };
 
@@ -111,18 +112,27 @@ async function parseJson(res: Response) {
   return data;
 }
 
-export async function readPurposes(activeOnly = false): Promise<{
+export async function readPurposes(
+  activeOnly = false,
+  opts?: { force?: boolean }
+): Promise<{
   purposes: PurposeRecord[];
   stats: PurposeStat[];
 }> {
-  const sp = new URLSearchParams();
-  if (activeOnly) sp.set("active", "true");
-  const res = await fetch(`/api/payment-purposes?${sp.toString()}`, { cache: "no-store" });
-  const data = await parseJson(res);
-  return {
-    purposes: ((data.purposes as Record<string, unknown>[]) || []).map(toPurpose),
-    stats: (data.stats as PurposeStat[]) || [],
-  };
+  return cachedQuery(
+    CacheKeys.purposes(activeOnly),
+    async () => {
+      const sp = new URLSearchParams();
+      if (activeOnly) sp.set("active", "true");
+      const res = await fetch(`/api/payment-purposes?${sp.toString()}`, { cache: "no-store" });
+      const data = await parseJson(res);
+      return {
+        purposes: ((data.purposes as Record<string, unknown>[]) || []).map(toPurpose),
+        stats: (data.stats as PurposeStat[]) || [],
+      };
+    },
+    { force: opts?.force }
+  );
 }
 
 export async function createPurpose(input: PurposeInput): Promise<PurposeRecord> {
@@ -173,70 +183,79 @@ export async function deletePurpose(id: string): Promise<void> {
 }
 
 /** GET /api/payment-purposes/[id] — purpose + paid/pending breakdown */
-export async function readPurposeDetails(id: string): Promise<PurposeDetails> {
+export async function readPurposeDetails(
+  id: string,
+  opts?: { force?: boolean }
+): Promise<PurposeDetails> {
   if (!id) throw new Error("Missing purpose id");
-  const res = await fetch(`/api/payment-purposes/${encodeURIComponent(id)}`, {
-    cache: "no-store",
-  });
-  const data = await parseJson(res);
+  return cachedQuery(
+    CacheKeys.purposeDetails(id),
+    async () => {
+      const res = await fetch(`/api/payment-purposes/${encodeURIComponent(id)}`, {
+        cache: "no-store",
+      });
+      const data = await parseJson(res);
 
-  const paid = ((data.paid as Record<string, unknown>[]) || []).map((row) => {
-    const ownerName = String(row.ownerName ?? "");
-    return {
-      flatId: String(row.flatId ?? ""),
-      flatNumber: String(row.flatNumber ?? ""),
-      floorNumber: Number(row.floorNumber) || 0,
-      ownerName,
-      ownerMobile: String(row.ownerMobile ?? ""),
-      hasOwner: typeof row.hasOwner === "boolean" ? row.hasOwner : !!ownerName.trim(),
-      amount: Number(row.amount) || 0,
-      paymentDate: row.paymentDate ? String(row.paymentDate).slice(0, 10) : "",
-      paymentMode: String(row.paymentMode ?? ""),
-      paymentId: String(row.paymentId ?? ""),
-      paymentSource: row.paymentSource === "builder" ? ("builder" as const) : ("owner" as const),
-      whatsappSent: !!row.whatsappSent,
-      notes: String(row.notes ?? ""),
-    };
-  });
+      const paid = ((data.paid as Record<string, unknown>[]) || []).map((row) => {
+        const ownerName = String(row.ownerName ?? "");
+        return {
+          flatId: String(row.flatId ?? ""),
+          flatNumber: String(row.flatNumber ?? ""),
+          floorNumber: Number(row.floorNumber) || 0,
+          ownerName,
+          ownerMobile: String(row.ownerMobile ?? ""),
+          hasOwner: typeof row.hasOwner === "boolean" ? row.hasOwner : !!ownerName.trim(),
+          amount: Number(row.amount) || 0,
+          paymentDate: row.paymentDate ? String(row.paymentDate).slice(0, 10) : "",
+          paymentMode: String(row.paymentMode ?? ""),
+          paymentId: String(row.paymentId ?? ""),
+          paymentSource: row.paymentSource === "builder" ? ("builder" as const) : ("owner" as const),
+          whatsappSent: !!row.whatsappSent,
+          notes: String(row.notes ?? ""),
+        };
+      });
 
-  const pending = ((data.pending as Record<string, unknown>[]) || []).map((row) => {
-    const ownerName = String(row.ownerName ?? "");
-    const hasOwner =
-      typeof row.hasOwner === "boolean" ? row.hasOwner : !!ownerName.trim();
-    return {
-      flatId: String(row.flatId ?? ""),
-      flatNumber: String(row.flatNumber ?? ""),
-      floorNumber: Number(row.floorNumber) || 0,
-      ownerName,
-      ownerMobile: String(row.ownerMobile ?? ""),
-      hasOwner,
-      pendingAmount: Number(row.pendingAmount) || 0,
-      flatStatus: row.flatStatus ? String(row.flatStatus) : undefined,
-    };
-  });
+      const pending = ((data.pending as Record<string, unknown>[]) || []).map((row) => {
+        const ownerName = String(row.ownerName ?? "");
+        const hasOwner =
+          typeof row.hasOwner === "boolean" ? row.hasOwner : !!ownerName.trim();
+        return {
+          flatId: String(row.flatId ?? ""),
+          flatNumber: String(row.flatNumber ?? ""),
+          floorNumber: Number(row.floorNumber) || 0,
+          ownerName,
+          ownerMobile: String(row.ownerMobile ?? ""),
+          hasOwner,
+          pendingAmount: Number(row.pendingAmount) || 0,
+          flatStatus: row.flatStatus ? String(row.flatStatus) : undefined,
+        };
+      });
 
-  const unsoldPending = ((data.unsoldPending as Record<string, unknown>[]) || []).map((row) => ({
-    flatId: String(row.flatId ?? ""),
-    flatNumber: String(row.flatNumber ?? ""),
-    floorNumber: Number(row.floorNumber) || 0,
-    pendingAmount: Number(row.pendingAmount) || 0,
-  }));
+      const unsoldPending = ((data.unsoldPending as Record<string, unknown>[]) || []).map((row) => ({
+        flatId: String(row.flatId ?? ""),
+        flatNumber: String(row.flatNumber ?? ""),
+        floorNumber: Number(row.floorNumber) || 0,
+        pendingAmount: Number(row.pendingAmount) || 0,
+      }));
 
-  const summary = (data.summary as PurposeDetailsSummary) || {
-    totalFlats: 0,
-    paidFlats: 0,
-    pendingFlats: 0,
-    noOwnerFlats: 0,
-    totalCollected: 0,
-    totalPending: 0,
-    collectionPercent: 0,
-  };
+      const summary = (data.summary as PurposeDetailsSummary) || {
+        totalFlats: 0,
+        paidFlats: 0,
+        pendingFlats: 0,
+        noOwnerFlats: 0,
+        totalCollected: 0,
+        totalPending: 0,
+        collectionPercent: 0,
+      };
 
-  return {
-    purpose: toPurpose(data.purpose as Record<string, unknown>),
-    summary,
-    paid,
-    pending,
-    unsoldPending,
-  };
+      return {
+        purpose: toPurpose(data.purpose as Record<string, unknown>),
+        summary,
+        paid,
+        pending,
+        unsoldPending,
+      };
+    },
+    { force: opts?.force }
+  );
 }

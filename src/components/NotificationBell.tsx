@@ -35,13 +35,14 @@ export default function NotificationBell() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const fetchingRef = useRef(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force = false) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
     try {
       const data = await readNotificationsForEveryone({
         limit: 12,
         status: "all",
+        force,
       });
       setAuthenticated(data.authenticated);
       setUnreadCount(data.unreadCount);
@@ -56,15 +57,15 @@ export default function NotificationBell() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    void refresh(false);
   }, [refresh]);
 
   useEffect(() => {
     const unsub = subscribeDataChanged(() => {
-      void refresh();
+      void refresh(true);
     });
     const poll = window.setInterval(() => {
-      void refresh();
+      void refresh(true);
     }, 25000);
     return () => {
       unsub();
@@ -73,7 +74,7 @@ export default function NotificationBell() {
   }, [refresh]);
 
   useEffect(() => {
-    if (open) void refresh();
+    if (open) void refresh(false);
   }, [open, refresh]);
 
   useEffect(() => {

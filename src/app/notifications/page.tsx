@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { SafeUser } from "@/lib/auth-client";
+import { readCurrentUser } from "@/lib/auth-client";
 import {
   deleteNotification,
   markAllNotificationsRead,
@@ -44,16 +44,8 @@ export default function NotificationsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) {
-          setIsSuperAdmin(false);
-          return;
-        }
-        const data = await res.json();
-        const user = (data.user ?? null) as SafeUser | null;
-        setIsSuperAdmin(user?.role === "super_admin");
-      })
+    void readCurrentUser()
+      .then((user) => setIsSuperAdmin(user?.role === "super_admin"))
       .catch(() => setIsSuperAdmin(false));
   }, []);
 
