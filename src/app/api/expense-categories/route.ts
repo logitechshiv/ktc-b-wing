@@ -6,7 +6,15 @@ import {
   defaultIncludeInCommonExpense,
   parseIncludeInCommonExpense,
 } from "@/lib/common-expense-constants";
-import { ensureExpenseCategoryCommonFlags, syncExpenseCategoriesFromExpenses } from "@/lib/expense-category-common";
+import {
+  ensureExpenseCategoryCommonFlags,
+  ensureExpenseCategoryRoles,
+  syncExpenseCategoriesFromExpenses,
+} from "@/lib/expense-category-common";
+import {
+  parseExpenseCategoryRole,
+  type ExpenseCategoryRole,
+} from "@/lib/expense-category-role";
 
 export const runtime = "nodejs";
 
@@ -14,6 +22,7 @@ function serializeCategory(doc: {
   _id: { toString(): string };
   name: string;
   includeInCommonExpense?: boolean | null;
+  role?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }) {
@@ -21,6 +30,7 @@ function serializeCategory(doc: {
     id: doc._id.toString(),
     name: doc.name,
     includeInCommonExpense: doc.includeInCommonExpense === true,
+    role: parseExpenseCategoryRole(doc.role, "normal"),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -44,6 +54,7 @@ export async function GET() {
           names.map((name) => ({
             name,
             includeInCommonExpense: defaultIncludeInCommonExpense(name),
+            role: "normal" as ExpenseCategoryRole,
           })),
           { ordered: false }
         ).catch(() => {
@@ -53,6 +64,7 @@ export async function GET() {
       }
     } else {
       await ensureExpenseCategoryCommonFlags();
+      await ensureExpenseCategoryRoles();
       docs = await ExpenseCategory.find({}).sort({ name: 1 }).lean();
     }
 
@@ -86,6 +98,7 @@ export async function POST(request: Request) {
       body.includeInCommonExpense,
       false
     );
+    const role = parseExpenseCategoryRole(body.role, "normal");
 
     const existing = await ExpenseCategory.findOne({
       name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
@@ -94,7 +107,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "Category already exists" }, { status: 409 });
     }
 
-    const category = await ExpenseCategory.create({ name, includeInCommonExpense });
+    const category = await ExpenseCategory.create({
+      name,
+      includeInCommonExpense,
+      role,
+    });
     return NextResponse.json(
       { success: true, message: "Category added", category: serializeCategory(category) },
       { status: 201 }

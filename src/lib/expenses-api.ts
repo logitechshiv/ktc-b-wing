@@ -1,12 +1,19 @@
 import { compareExpensesByCreatedAtDesc } from "@/lib/expense-utils";
 import { CacheKeys, cachedQuery } from "@/lib/data-cache";
+import {
+  parseExpenseCategoryRole,
+  type ExpenseCategoryRole,
+} from "@/lib/expense-category-role";
 
 export type ExpensePaymentMethod = "cash" | "bank" | "upi" | "cheque";
+
+export type { ExpenseCategoryRole };
 
 export interface ExpenseCategoryRecord {
   id: string;
   name: string;
   includeInCommonExpense: boolean;
+  role: ExpenseCategoryRole;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -88,6 +95,7 @@ function toCategory(raw: Record<string, unknown>): ExpenseCategoryRecord {
     id: String(raw.id ?? raw._id),
     name: String(raw.name ?? ""),
     includeInCommonExpense: raw.includeInCommonExpense === true,
+    role: parseExpenseCategoryRole(raw.role, "normal"),
     createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
     updatedAt: raw.updatedAt ? String(raw.updatedAt) : undefined,
   };
@@ -117,14 +125,15 @@ export async function readExpenseCategories(opts?: {
 
 export async function createExpenseCategory(
   name: string,
-  includeInCommonExpense = false
+  includeInCommonExpense = false,
+  role: ExpenseCategoryRole = "normal"
 ): Promise<ExpenseCategoryRecord> {
   const res = await fetch("/api/expense-categories", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
     cache: "no-store",
-    body: JSON.stringify({ name, includeInCommonExpense }),
+    body: JSON.stringify({ name, includeInCommonExpense, role }),
   });
   const data = await parseJson(res);
   return toCategory(data.category);
@@ -133,14 +142,15 @@ export async function createExpenseCategory(
 export async function updateExpenseCategory(
   id: string,
   name: string,
-  includeInCommonExpense = false
+  includeInCommonExpense = false,
+  role: ExpenseCategoryRole = "normal"
 ): Promise<ExpenseCategoryRecord> {
   const res = await fetch(`/api/expense-categories/${encodeURIComponent(id)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
     cache: "no-store",
-    body: JSON.stringify({ name, includeInCommonExpense }),
+    body: JSON.stringify({ name, includeInCommonExpense, role }),
   });
   const data = await parseJson(res);
   return toCategory(data.category);

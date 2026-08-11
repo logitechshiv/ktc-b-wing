@@ -16,9 +16,16 @@ import {
   updateExpense,
   updateExpenseCategory,
   type ExpenseCategoryRecord,
+  type ExpenseCategoryRole,
   type ExpenseInput,
   type ExpenseRecord,
 } from "@/lib/expenses-api";
+import {
+  EXPENSE_CATEGORY_ROLE_OPTIONS,
+  expenseCategoryRoleLabel,
+  parseExpenseCategoryRole,
+} from "@/lib/expense-category-role";
+import { formSelect } from "@/lib/form-styles";
 import { CacheKeys, peekCache } from "@/lib/data-cache";
 import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
 import ExpenseRow from "@/components/ExpenseRow";
@@ -102,9 +109,11 @@ export default function ExpensesPage() {
 
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryIncludeCommon, setNewCategoryIncludeCommon] = useState(false);
+  const [newCategoryRole, setNewCategoryRole] = useState<ExpenseCategoryRole>("normal");
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState("");
   const [editingCategoryIncludeCommon, setEditingCategoryIncludeCommon] = useState(false);
+  const [editingCategoryRole, setEditingCategoryRole] = useState<ExpenseCategoryRole>("normal");
   const [categorySaving, setCategorySaving] = useState(false);
 
   const filtersActive = q.trim() !== "" || category !== "all";
@@ -282,9 +291,10 @@ export default function ExpensesPage() {
     setCategorySaving(true);
     setError(null);
     try {
-      await createExpenseCategory(name, newCategoryIncludeCommon);
+      await createExpenseCategory(name, newCategoryIncludeCommon, newCategoryRole);
       setNewCategoryName("");
       setNewCategoryIncludeCommon(false);
+      setNewCategoryRole("normal");
       setSuccess("Category added");
       notifyDataChanged("expense");
       await loadCategories({ force: true });
@@ -306,7 +316,12 @@ export default function ExpensesPage() {
     setCategorySaving(true);
     setError(null);
     try {
-      const updated = await updateExpenseCategory(id, name, editingCategoryIncludeCommon);
+      const updated = await updateExpenseCategory(
+        id,
+        name,
+        editingCategoryIncludeCommon,
+        editingCategoryRole
+      );
       // Update in place by id — never append a duplicate row
       setManagedCategories((list) => list.map((c) => (c.id === updated.id ? updated : c)));
       cancelCategoryEdit();
@@ -325,8 +340,10 @@ export default function ExpensesPage() {
     setEditingCategoryId(null);
     setEditingCategoryName("");
     setEditingCategoryIncludeCommon(false);
+    setEditingCategoryRole("normal");
     setNewCategoryName("");
     setNewCategoryIncludeCommon(false);
+    setNewCategoryRole("normal");
     setError(null);
   }
 
@@ -339,8 +356,7 @@ export default function ExpensesPage() {
     try {
       await deleteExpenseCategory(id);
       if (editingCategoryId === id) {
-        setEditingCategoryId(null);
-        setEditingCategoryName("");
+        cancelCategoryEdit();
       }
       setDeleteCategoryTarget(null);
       setSuccess("Category deleted");
@@ -506,6 +522,23 @@ export default function ExpensesPage() {
                   + Add Category
                 </button>
               </div>
+              <label className="block text-xs font-semibold text-slate-600">
+                Role
+                <select
+                  value={newCategoryRole}
+                  onChange={(e) =>
+                    setNewCategoryRole(parseExpenseCategoryRole(e.target.value, "normal"))
+                  }
+                  disabled={!!editingCategoryId || categorySaving}
+                  className={formSelect + " disabled:bg-slate-50 disabled:opacity-60"}
+                >
+                  {EXPENSE_CATEGORY_ROLE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-600">
                 <input
                   type="checkbox"
@@ -539,6 +572,24 @@ export default function ExpensesPage() {
                           }}
                           className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-brand"
                         />
+                        <label className="block text-[11px] font-semibold text-slate-600">
+                          Role
+                          <select
+                            value={editingCategoryRole}
+                            onChange={(e) =>
+                              setEditingCategoryRole(
+                                parseExpenseCategoryRole(e.target.value, "normal")
+                              )
+                            }
+                            className={formSelect}
+                          >
+                            {EXPENSE_CATEGORY_ROLE_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                         <label className="flex cursor-pointer items-center gap-2 text-[11px] font-medium text-slate-600">
                           <input
                             type="checkbox"
@@ -571,6 +622,9 @@ export default function ExpensesPage() {
                     <>
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-semibold text-navy">{c.name}</div>
+                        <div className="mt-0.5 text-[11px] font-medium text-slate-500">
+                          Role: {expenseCategoryRoleLabel(c.role || "normal")}
+                        </div>
                         <div
                           className={
                             "mt-0.5 text-[11px] font-medium " +
@@ -587,8 +641,10 @@ export default function ExpensesPage() {
                             setEditingCategoryId(c.id);
                             setEditingCategoryName(c.name);
                             setEditingCategoryIncludeCommon(!!c.includeInCommonExpense);
+                            setEditingCategoryRole(parseExpenseCategoryRole(c.role, "normal"));
                             setNewCategoryName("");
                             setNewCategoryIncludeCommon(false);
+                            setNewCategoryRole("normal");
                             setError(null);
                           }}
                           className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand"

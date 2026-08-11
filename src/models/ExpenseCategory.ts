@@ -1,4 +1,5 @@
 import mongoose, { Schema, models, model, type InferSchemaType, type Model } from "mongoose";
+import { EXPENSE_CATEGORY_ROLES } from "@/lib/expense-category-role";
 
 const ExpenseCategorySchema = new Schema(
   {
@@ -13,6 +14,16 @@ const ExpenseCategorySchema = new Schema(
     includeInCommonExpense: {
       type: Boolean,
       default: false,
+      index: true,
+    },
+    /**
+     * KIRAN 3 Common balance role (independent of includeInCommonExpense):
+     * normal | common_credit (+) | common_debit (-)
+     */
+    role: {
+      type: String,
+      enum: EXPENSE_CATEGORY_ROLES,
+      default: "normal",
       index: true,
     },
   },

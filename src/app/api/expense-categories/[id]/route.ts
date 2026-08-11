@@ -5,6 +5,7 @@ import Expense from "@/models/Expense";
 import ExpenseCategory from "@/models/ExpenseCategory";
 import { requireSuperAdmin } from "@/lib/require-super-admin";
 import { parseIncludeInCommonExpense } from "@/lib/common-expense-constants";
+import { parseExpenseCategoryRole } from "@/lib/expense-category-role";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,7 @@ function serializeCategory(doc: {
   _id: { toString(): string };
   name: string;
   includeInCommonExpense?: boolean | null;
+  role?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }) {
@@ -26,6 +28,7 @@ function serializeCategory(doc: {
     id: doc._id.toString(),
     name: doc.name,
     includeInCommonExpense: doc.includeInCommonExpense === true,
+    role: parseExpenseCategoryRole(doc.role, "normal"),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -62,6 +65,10 @@ export async function PUT(request: Request, context: RouteContext) {
       body.includeInCommonExpense,
       existing.includeInCommonExpense === true
     );
+    const role = parseExpenseCategoryRole(
+      body.role,
+      parseExpenseCategoryRole(existing.role, "normal")
+    );
 
     const oid = existing._id;
     const duplicate = await ExpenseCategory.findOne({
@@ -76,6 +83,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
     existing.name = name;
     existing.includeInCommonExpense = includeInCommonExpense;
+    existing.role = role;
     await existing.save();
 
     // Keep expense.category strings in sync so sync-from-expenses does not re-create the old name

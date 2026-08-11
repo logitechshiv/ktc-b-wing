@@ -1,20 +1,26 @@
 import { CacheKeys, cachedQuery } from "@/lib/data-cache";
 
 export interface Kiran3CommonBalance {
-  givenToCommon: number;
-  commonExpense: number;
+  totalCommonCredit: number;
+  totalCommonDebit: number;
   balance: number;
-  includedCategories: string[];
-  societyAdvanceCategory: string;
+  creditCategories: string[];
+  debitCategories: string[];
+  /** @deprecated alias */
+  givenToCommon: number;
+  /** @deprecated alias */
+  commonExpense: number;
 }
 
 export function emptyKiran3CommonBalance(): Kiran3CommonBalance {
   return {
+    totalCommonCredit: 0,
+    totalCommonDebit: 0,
+    balance: 0,
+    creditCategories: [],
+    debitCategories: [],
     givenToCommon: 0,
     commonExpense: 0,
-    balance: 0,
-    includedCategories: [],
-    societyAdvanceCategory: "KIRAN 3 Society Advance",
   };
 }
 
@@ -29,19 +35,28 @@ export async function readKiran3CommonBalance(opts?: {
       if (!res.ok || data.success === false) {
         throw new Error(data.message || `Request failed (${res.status})`);
       }
-      const givenToCommon = Math.max(0, Number(data.givenToCommon) || 0);
-      const commonExpense = Math.max(0, Number(data.commonExpense) || 0);
+      const totalCommonCredit = Math.max(
+        0,
+        Number(data.totalCommonCredit ?? data.givenToCommon) || 0
+      );
+      const totalCommonDebit = Math.max(
+        0,
+        Number(data.totalCommonDebit ?? data.commonExpense) || 0
+      );
       return {
-        givenToCommon,
-        commonExpense,
+        totalCommonCredit,
+        totalCommonDebit,
         balance: Number.isFinite(Number(data.balance))
           ? Number(data.balance)
-          : givenToCommon - commonExpense,
-        includedCategories: Array.isArray(data.includedCategories)
-          ? data.includedCategories.map((n: unknown) => String(n || "").trim()).filter(Boolean)
+          : totalCommonCredit - totalCommonDebit,
+        creditCategories: Array.isArray(data.creditCategories)
+          ? data.creditCategories.map((n: unknown) => String(n || "").trim()).filter(Boolean)
           : [],
-        societyAdvanceCategory:
-          String(data.societyAdvanceCategory || "").trim() || "KIRAN 3 Society Advance",
+        debitCategories: Array.isArray(data.debitCategories)
+          ? data.debitCategories.map((n: unknown) => String(n || "").trim()).filter(Boolean)
+          : [],
+        givenToCommon: totalCommonCredit,
+        commonExpense: totalCommonDebit,
       };
     },
     { force: opts?.force }

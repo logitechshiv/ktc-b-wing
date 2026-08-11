@@ -33,12 +33,27 @@ export async function ensureExpenseCategoryCommonFlags(): Promise<void> {
   );
 }
 
+/** Backfill missing `role` as Normal — never overwrite an existing role. */
+export async function ensureExpenseCategoryRoles(): Promise<void> {
+  await ExpenseCategory.updateMany(
+    {
+      $or: [
+        { role: { $exists: false } },
+        { role: null },
+        { role: "" },
+      ],
+    } as Record<string, unknown>,
+    { $set: { role: "normal" } }
+  );
+}
+
 /**
  * Insert any expense `category` strings that are missing from expense_categories.
- * Never overwrites existing include flags.
+ * Never overwrites existing include flags or roles.
  */
 export async function syncExpenseCategoriesFromExpenses(): Promise<void> {
   await ensureExpenseCategoryCommonFlags();
+  await ensureExpenseCategoryRoles();
   const [existing, names] = await Promise.all([
     ExpenseCategory.find({}).select({ name: 1 }).lean().exec(),
     Expense.distinct("category"),
@@ -46,7 +61,11 @@ export async function syncExpenseCategoriesFromExpenses(): Promise<void> {
   const have = new Set(
     existing.map((d) => normalizeCategoryName(String(d.name || ""))).filter(Boolean)
   );
-  const toInsert: { name: string; includeInCommonExpense: boolean }[] = [];
+  const toInsert: {
+    name: string;
+    includeInCommonExpense: boolean;
+    role: "normal";
+  }[] = [];
   for (const raw of names) {
     const name = String(raw || "").trim();
     if (!name) continue;
@@ -56,6 +75,7 @@ export async function syncExpenseCategoriesFromExpenses(): Promise<void> {
     toInsert.push({
       name,
       includeInCommonExpense: defaultIncludeInCommonExpense(name),
+      role: "normal",
     });
   }
   if (toInsert.length === 0) return;
