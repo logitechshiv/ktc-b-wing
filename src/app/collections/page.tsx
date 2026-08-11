@@ -75,7 +75,7 @@ function isPendingFlat(row: PurposePendingFlat) {
   return (Number(row.pendingAmount) || 0) > 0;
 }
 
-/** Build Owner/Renter options from pending sold flats + flat registry. */
+/** Build one Flat / Owner / Renter option per pending flat (display rules). */
 function buildCollectOptions(
   pending: PurposePendingFlat[],
   flats: FlatRecord[]
@@ -98,20 +98,11 @@ function buildCollectOptions(
     const floorNumber = flat?.floorNumber ?? pendingFlat.floorNumber;
 
     const ownerName = (flat?.ownerName || pendingFlat.ownerName || "").trim();
-    // Active/current renter from flats module (or purpose-details payload)
     const renterName = (flat?.renterName || pendingFlat.renterName || "").trim();
 
-    if (ownerName) {
-      options.push({
-        key: `${flatId}:owner`,
-        flatId,
-        flatNumber,
-        floorNumber,
-        name: ownerName,
-        ownerType: "Owner",
-        label: `${flatNumber} - ${ownerName} (Owner)`,
-      });
-    }
+    // 1) Owner + Renter → show renter only with (Renter)
+    // 2) Owner only → show owner name (no type suffix)
+    // 3) Neither → skip (existing: no selectable option)
     if (renterName) {
       options.push({
         key: `${flatId}:renter`,
@@ -121,6 +112,16 @@ function buildCollectOptions(
         name: renterName,
         ownerType: "Renter",
         label: `${flatNumber} - ${renterName} (Renter)`,
+      });
+    } else if (ownerName) {
+      options.push({
+        key: `${flatId}:owner`,
+        flatId,
+        flatNumber,
+        floorNumber,
+        name: ownerName,
+        ownerType: "Owner",
+        label: `${flatNumber} - ${ownerName}`,
       });
     }
   }
