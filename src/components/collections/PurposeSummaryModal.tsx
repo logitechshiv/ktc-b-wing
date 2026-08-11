@@ -77,6 +77,7 @@ export default function PurposeSummaryModal({ open, details, loading = false, on
         floorNumber: row.floorNumber,
         ownerName: "",
         ownerMobile: "",
+        renterName: "",
         hasOwner: false,
         pendingAmount: row.pendingAmount,
         flatStatus: "available",

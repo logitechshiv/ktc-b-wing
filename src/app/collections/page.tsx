@@ -464,6 +464,7 @@ export default function CollectionsPage() {
         floorNumber: row.floorNumber,
         ownerName: "",
         ownerMobile: "",
+        renterName: "",
         hasOwner: false,
         pendingAmount: row.pendingAmount,
         flatStatus: "available",
