@@ -216,7 +216,10 @@ export default function ExpensesPage() {
     setModalError(null);
     setSuccess(null);
     try {
-      if (modalMode === "edit" && editing) {
+      if (modalMode === "edit") {
+        if (!editing?.id) {
+          throw new Error("Missing expense id — cannot update. Re-open Edit and try again.");
+        }
         await updateExpense(editing.id, {
           ...input,
           whatsappShared: editing.whatsappShared,
@@ -227,6 +230,7 @@ export default function ExpensesPage() {
         setSuccess("Expense added");
       }
       setModalOpen(false);
+      setModalMode("add");
       setEditing(null);
       notifyDataChanged("expense");
       await load({ force: true });
@@ -269,6 +273,10 @@ export default function ExpensesPage() {
   }
 
   async function handleAddCategory() {
+    if (editingCategoryId) {
+      setError("Finish or cancel category edit before adding a new one");
+      return;
+    }
     const name = newCategoryName.trim();
     if (!name) return;
     setCategorySaving(true);
@@ -288,16 +296,20 @@ export default function ExpensesPage() {
   }
 
   async function handleSaveCategory() {
-    if (!editingCategoryId) return;
+    const id = editingCategoryId?.trim();
+    if (!id) {
+      setError("No category selected for edit");
+      return;
+    }
     const name = editingCategoryName.trim();
     if (!name) return;
     setCategorySaving(true);
     setError(null);
     try {
-      await updateExpenseCategory(editingCategoryId, name, editingCategoryIncludeCommon);
-      setEditingCategoryId(null);
-      setEditingCategoryName("");
-      setEditingCategoryIncludeCommon(false);
+      const updated = await updateExpenseCategory(id, name, editingCategoryIncludeCommon);
+      // Update in place by id — never append a duplicate row
+      setManagedCategories((list) => list.map((c) => (c.id === updated.id ? updated : c)));
+      cancelCategoryEdit();
       setSuccess("Category updated");
       notifyDataChanged("expense");
       await loadCategories({ force: true });
@@ -307,6 +319,15 @@ export default function ExpensesPage() {
     } finally {
       setCategorySaving(false);
     }
+  }
+
+  function cancelCategoryEdit() {
+    setEditingCategoryId(null);
+    setEditingCategoryName("");
+    setEditingCategoryIncludeCommon(false);
+    setNewCategoryName("");
+    setNewCategoryIncludeCommon(false);
+    setError(null);
   }
 
   async function handleDeleteCategory() {
@@ -464,12 +485,21 @@ export default function ExpensesPage() {
                 <input
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (!editingCategoryId) void handleAddCategory();
+                    }
+                  }}
                   placeholder="New category name"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
+                  disabled={!!editingCategoryId || categorySaving}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
                 />
                 <button
                   type="button"
-                  disabled={categorySaving || !newCategoryName.trim()}
+                  disabled={
+                    !!editingCategoryId || categorySaving || !newCategoryName.trim()
+                  }
                   onClick={() => void handleAddCategory()}
                   className="shrink-0 rounded-xl bg-black px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
                 >
@@ -481,10 +511,16 @@ export default function ExpensesPage() {
                   type="checkbox"
                   checked={newCategoryIncludeCommon}
                   onChange={(e) => setNewCategoryIncludeCommon(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+                  disabled={!!editingCategoryId || categorySaving}
+                  className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand disabled:opacity-50"
                 />
-                Include in Monthly Common Expense Split
+                Include in Common Expense
               </label>
+              {editingCategoryId ? (
+                <p className="text-[11px] text-amber-600">
+                  Editing a category — Save or Cancel below before adding a new one.
+                </p>
+              ) : null}
             </div>
             <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-100">
               {managedCategories.map((c) => (
@@ -495,6 +531,12 @@ export default function ExpensesPage() {
                         <input
                           value={editingCategoryName}
                           onChange={(e) => setEditingCategoryName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void handleSaveCategory();
+                            }
+                          }}
                           className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-brand"
                         />
                         <label className="flex cursor-pointer items-center gap-2 text-[11px] font-medium text-slate-600">
@@ -504,7 +546,7 @@ export default function ExpensesPage() {
                             onChange={(e) => setEditingCategoryIncludeCommon(e.target.checked)}
                             className="h-3.5 w-3.5 rounded border-slate-300 text-brand focus:ring-brand"
                           />
-                          Include in Monthly Common Expense Split
+                          Include in Common Expense
                         </label>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
@@ -518,11 +560,7 @@ export default function ExpensesPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            setEditingCategoryId(null);
-                            setEditingCategoryName("");
-                            setEditingCategoryIncludeCommon(false);
-                          }}
+                          onClick={cancelCategoryEdit}
                           className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-500"
                         >
                           Cancel
@@ -549,6 +587,9 @@ export default function ExpensesPage() {
                             setEditingCategoryId(c.id);
                             setEditingCategoryName(c.name);
                             setEditingCategoryIncludeCommon(!!c.includeInCommonExpense);
+                            setNewCategoryName("");
+                            setNewCategoryIncludeCommon(false);
+                            setError(null);
                           }}
                           className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand"
                         >
@@ -640,6 +681,7 @@ export default function ExpensesPage() {
         error={modalError}
         onClose={() => {
           setModalOpen(false);
+          setModalMode("add");
           setEditing(null);
           setModalError(null);
         }}

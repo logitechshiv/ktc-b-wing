@@ -7,6 +7,7 @@
 import { readCurrentUser } from "@/lib/auth-client";
 import { readDashboard } from "@/lib/dashboard-api";
 import { readCommonExpenseSplit } from "@/lib/common-expense-split-api";
+import { readKiran3CommonBalance } from "@/lib/kiran3-common-api";
 import { readFlats } from "@/lib/flats-api";
 import { readVehicles } from "@/lib/vehicles-api";
 import { readExpenses, readExpenseCategories } from "@/lib/expenses-api";
@@ -45,6 +46,7 @@ export function bootstrapAppData(): Promise<void> {
       readCurrentUser().catch(() => null),
       readDashboard().catch(() => undefined),
       readCommonExpenseSplit(month, year).catch(() => undefined),
+      readKiran3CommonBalance().catch(() => undefined),
       readFlats({ status: "all" }).catch(() => undefined),
       readVehicles({ q: "", sticker: "all", type: "all" }).catch(() => undefined),
       readExpenses({ q: "", category: "all" }).catch(() => undefined),

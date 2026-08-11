@@ -18,6 +18,7 @@ import ExpenseRow from "@/components/ExpenseRow";
 import SummaryTile from "@/components/SummaryTile";
 import NoticeCard from "@/components/NoticeCard";
 import CommonExpenseSplit from "@/components/CommonExpenseSplit";
+import Kiran3CommonCard from "@/components/Kiran3CommonCard";
 
 function toExpenseRow(e: DashboardRecentExpense) {
   const billUrls =
@@ -254,6 +255,8 @@ export default function DashboardHome() {
           </p>
         </div>
       </section>
+
+      <Kiran3CommonCard />
 
       {/* By Payment Mode — collected vs spent per mode */}
       <section className="overflow-hidden rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80 sm:p-5">

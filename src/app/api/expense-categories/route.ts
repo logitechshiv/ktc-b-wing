@@ -6,7 +6,7 @@ import {
   defaultIncludeInCommonExpense,
   parseIncludeInCommonExpense,
 } from "@/lib/common-expense-constants";
-import { ensureExpenseCategoryCommonFlags } from "@/lib/expense-category-common";
+import { ensureExpenseCategoryCommonFlags, syncExpenseCategoriesFromExpenses } from "@/lib/expense-category-common";
 
 export const runtime = "nodejs";
 
@@ -30,7 +30,7 @@ function serializeCategory(doc: {
 export async function GET() {
   try {
     await connectDB();
-    await ensureExpenseCategoryCommonFlags();
+    await syncExpenseCategoriesFromExpenses();
     let docs = await ExpenseCategory.find({}).sort({ name: 1 }).lean();
 
     // First load: seed category chips from existing expense categories
@@ -51,6 +51,9 @@ export async function GET() {
         });
         docs = await ExpenseCategory.find({}).sort({ name: 1 }).lean();
       }
+    } else {
+      await ensureExpenseCategoryCommonFlags();
+      docs = await ExpenseCategory.find({}).sort({ name: 1 }).lean();
     }
 
     return NextResponse.json({

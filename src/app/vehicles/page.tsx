@@ -240,6 +240,7 @@ export default function VehiclesPage() {
         flashSuccess("Vehicle added");
       }
       setModalOpen(false);
+      setModalMode("add");
       setEditing(null);
       notifyDataChanged("vehicle");
       await load({ force: true });
@@ -524,6 +525,7 @@ export default function VehiclesPage() {
         error={modalError}
         onClose={() => {
           setModalOpen(false);
+          setModalMode("add");
           setEditing(null);
           setModalError(null);
         }}

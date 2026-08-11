@@ -113,7 +113,10 @@ export default function NoticesPage() {
     setSaving(true);
     setModalError(null);
     try {
-      if (modalMode === "edit" && editing) {
+      if (modalMode === "edit") {
+        if (!editing?.id) {
+          throw new Error("Missing notice id — cannot update. Re-open Edit and try again.");
+        }
         const updated = await updateNotice(editing.id, data);
         setNotices((list) => list.map((n) => (n.id === updated.id ? updated : n)));
         flashSuccess("Notice updated");
@@ -122,6 +125,7 @@ export default function NoticesPage() {
         flashSuccess("Notice added");
       }
       setModalOpen(false);
+      setModalMode("add");
       setEditing(null);
       notifyDataChanged("notice");
       if (modalMode !== "edit") {
@@ -251,6 +255,7 @@ export default function NoticesPage() {
         error={modalError}
         onClose={() => {
           setModalOpen(false);
+          setModalMode("add");
           setEditing(null);
           setModalError(null);
         }}

@@ -23,6 +23,7 @@ export const CacheKeys = {
   dashboard: () => "dashboard",
   commonExpenseSplit: (month: number, year: number) =>
     `common-expense-split:${month}:${year}`,
+  kiran3Common: () => "kiran3-common",
   flats: (q = "", status = "all") => `flats:q=${q}|status=${status}`,
   vehicles: (q = "", sticker = "all", type = "all") =>
     `vehicles:q=${q}|sticker=${sticker}|type=${type}`,
@@ -125,6 +126,7 @@ export function invalidateCacheForSource(source: CacheInvalidationSource): void 
         "expenses:*",
         CacheKeys.expenseCategories(),
         "common-expense-split:*",
+        CacheKeys.kiran3Common(),
         "notifications:*"
       );
       break;

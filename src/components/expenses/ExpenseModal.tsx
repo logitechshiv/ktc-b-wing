@@ -77,7 +77,9 @@ export default function ExpenseModal({
       setBillImages([]);
       setNotes("");
     }
-  }, [open, mode, initial, categories]);
+    // Only re-init when opening / switching record — not when categories list refreshes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [open, mode, initial?.id]);
 
   if (!open) return null;
 

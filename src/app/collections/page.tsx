@@ -626,6 +626,7 @@ export default function CollectionsPage() {
         // Keep accordions collapsed by default — do not auto-open
       }
       setPurposeModalOpen(false);
+      setPurposeModalMode("add");
       setEditingPurpose(null);
       notifyDataChanged("purpose");
       await load({ force: true });
@@ -1347,6 +1348,7 @@ export default function CollectionsPage() {
         error={purposeModalError}
         onClose={() => {
           setPurposeModalOpen(false);
+          setPurposeModalMode("add");
           setEditingPurpose(null);
           setPurposeModalError(null);
         }}

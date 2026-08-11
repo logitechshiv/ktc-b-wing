@@ -1,4 +1,5 @@
 import ExpenseCategory from "@/models/ExpenseCategory";
+import Expense from "@/models/Expense";
 import {
   defaultIncludeInCommonExpense,
   normalizeCategoryName,
@@ -32,9 +33,40 @@ export async function ensureExpenseCategoryCommonFlags(): Promise<void> {
   );
 }
 
+/**
+ * Insert any expense `category` strings that are missing from expense_categories.
+ * Never overwrites existing include flags.
+ */
+export async function syncExpenseCategoriesFromExpenses(): Promise<void> {
+  await ensureExpenseCategoryCommonFlags();
+  const [existing, names] = await Promise.all([
+    ExpenseCategory.find({}).select({ name: 1 }).lean().exec(),
+    Expense.distinct("category"),
+  ]);
+  const have = new Set(
+    existing.map((d) => normalizeCategoryName(String(d.name || ""))).filter(Boolean)
+  );
+  const toInsert: { name: string; includeInCommonExpense: boolean }[] = [];
+  for (const raw of names) {
+    const name = String(raw || "").trim();
+    if (!name) continue;
+    const key = normalizeCategoryName(name);
+    if (!key || have.has(key)) continue;
+    have.add(key);
+    toInsert.push({
+      name,
+      includeInCommonExpense: defaultIncludeInCommonExpense(name),
+    });
+  }
+  if (toInsert.length === 0) return;
+  await ExpenseCategory.insertMany(toInsert, { ordered: false }).catch(() => {
+    /* ignore duplicate races */
+  });
+}
+
 /** Build a case-insensitive set of category names marked for common split. */
 export async function getIncludedCommonExpenseCategoryNames(): Promise<string[]> {
-  await ensureExpenseCategoryCommonFlags();
+  await syncExpenseCategoriesFromExpenses();
   const docs = await ExpenseCategory.find({ includeInCommonExpense: true })
     .select({ name: 1 })
     .lean()
@@ -46,7 +78,7 @@ export async function getIncludedCommonExpenseCategoryNames(): Promise<string[]>
 }
 
 export async function getExcludedCommonExpenseCategoryNames(): Promise<string[]> {
-  await ensureExpenseCategoryCommonFlags();
+  await syncExpenseCategoriesFromExpenses();
   const docs = await ExpenseCategory.find({
     $or: [{ includeInCommonExpense: false }, { includeInCommonExpense: { $exists: false } }],
   })

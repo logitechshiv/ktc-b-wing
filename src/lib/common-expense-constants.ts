@@ -2,6 +2,12 @@
 export const COMMON_EXPENSE_TOTAL_FLATS = 52;
 
 /**
+ * Expense category that represents money the wing has given to Kiran 3 Common
+ * (Society Advance). Used by the Dashboard "Kiran 3 Common" card.
+ */
+export const KIRAN3_SOCIETY_ADVANCE_CATEGORY = "KIRAN 3 Society Advance";
+
+/**
  * Legacy seed defaults used only when migrating categories that are missing
  * `includeInCommonExpense`. New/updated values come from MongoDB.
  */
@@ -22,6 +28,7 @@ export const LEGACY_COMMON_EXPENSE_EXCLUDED_CATEGORIES = [
   "Flat Expense",
   "Event",
   "Festival",
+  KIRAN3_SOCIETY_ADVANCE_CATEGORY,
 ] as const;
 
 export function normalizeCategoryName(value: string): string {

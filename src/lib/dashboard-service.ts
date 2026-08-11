@@ -187,7 +187,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         { $sort: { total: -1 } },
       ]).exec(),
       Expense.find({})
-        .sort({ displayOrder: 1, expenseDate: -1 })
+        .sort({ createdAt: -1, expenseDate: -1 })
         .limit(3)
         .lean()
         .exec(),

@@ -215,6 +215,7 @@ export default function FlatsPage() {
           setCache(flatsCacheKey(q, status), prev);
           return prev;
         });
+        setModalMode("add");
       } else {
         const flatNo = String(data.flatNumber ?? "").trim();
         const duplicate = floors.some((floor) =>
@@ -226,6 +227,7 @@ export default function FlatsPage() {
         await createFlat(data);
         flashSuccess("Plot details saved");
         setModalOpen(false);
+        setModalMode("add");
         setEditing(null);
         notifyDataChanged("flat");
         await load({ force: true });
@@ -491,6 +493,7 @@ export default function FlatsPage() {
         error={modalError}
         onClose={() => {
           setModalOpen(false);
+          setModalMode("add");
           setEditing(null);
           setModalError(null);
         }}
