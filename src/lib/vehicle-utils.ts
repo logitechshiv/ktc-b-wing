@@ -241,3 +241,29 @@ export function compareVehiclesByTypeThenFlat(
     String(a.flatNumber).localeCompare(String(b.flatNumber))
   );
 }
+
+/** Flat-number-wise list: flat ascending, then type (Car → Bike → Auto). */
+export function compareVehiclesByFlatThenType(
+  a: { vehicleType: string; flatNumber: string; vehicleNumber?: string },
+  b: { vehicleType: string; flatNumber: string; vehicleNumber?: string }
+) {
+  return (
+    Number(a.flatNumber) - Number(b.flatNumber) ||
+    String(a.flatNumber).localeCompare(String(b.flatNumber)) ||
+    vehicleTypeSortRank(a.vehicleType) - vehicleTypeSortRank(b.vehicleType) ||
+    String(a.vehicleNumber || "").localeCompare(String(b.vehicleNumber || ""))
+  );
+}
+
+/** Group cards: flat number ascending, owner before renter on same flat. */
+export function compareVehicleGroupsByFlat(
+  a: { flatNumber: string; floorNumber?: number; vehicleOwnerType?: string },
+  b: { flatNumber: string; floorNumber?: number; vehicleOwnerType?: string }
+) {
+  return (
+    Number(a.flatNumber) - Number(b.flatNumber) ||
+    String(a.flatNumber).localeCompare(String(b.flatNumber)) ||
+    (Number(a.floorNumber) || 0) - (Number(b.floorNumber) || 0) ||
+    String(a.vehicleOwnerType || "owner").localeCompare(String(b.vehicleOwnerType || "owner"))
+  );
+}

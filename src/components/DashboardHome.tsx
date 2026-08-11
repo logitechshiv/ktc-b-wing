@@ -20,11 +20,7 @@ import CommonExpenseSplit from "@/components/CommonExpenseSplit";
 
 function toExpenseRow(e: DashboardRecentExpense) {
   const billUrls =
-    e.billImages?.length > 0
-      ? e.billImages
-      : e.billImage
-        ? [e.billImage]
-        : [];
+    e.billImages?.length > 0 ? e.billImages : e.billImage ? [e.billImage] : [];
   return {
     id: e.id,
     category: e.category,
@@ -58,7 +54,9 @@ export default function DashboardHome() {
       setDash(stats);
       setLoadError(null);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Unable to load dashboard");
+      setLoadError(
+        err instanceof Error ? err.message : "Unable to load dashboard",
+      );
     } finally {
       setLoading(false);
     }
@@ -104,17 +102,22 @@ export default function DashboardHome() {
           className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
         >
           <div className="font-semibold">Dashboard data unavailable</div>
-          <p className="mt-1 text-xs leading-relaxed text-rose-600/90">{loadError}</p>
+          <p className="mt-1 text-xs leading-relaxed text-rose-600/90">
+            {loadError}
+          </p>
           <p className="mt-2 text-xs leading-relaxed text-rose-600/80">
-            If this mentions MongoDB IP whitelist, open Atlas → Network Access → Allow Access from
-            Anywhere (<code className="rounded bg-rose-100 px-1">0.0.0.0/0</code>) so Vercel can
-            connect.
+            If this mentions MongoDB IP whitelist, open Atlas → Network Access →
+            Allow Access from Anywhere (
+            <code className="rounded bg-rose-100 px-1">0.0.0.0/0</code>) so
+            Vercel can connect.
           </p>
         </div>
       )}
 
       <section className="overflow-hidden rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80 sm:p-5">
-        <h2 className="mb-4 text-[17px] font-bold tracking-tight text-navy">Fund Summary</h2>
+        <h2 className="mb-4 text-[17px] font-bold tracking-tight text-navy">
+          Fund Summary
+        </h2>
 
         <div className="space-y-3">
           <SummaryTile
@@ -156,7 +159,9 @@ export default function DashboardHome() {
         {/* Flats — one compact row (not separate boxes) */}
         <div className="mt-4 rounded-2xl bg-slate-50 px-3.5 py-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Flats</span>
+            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+              Flats
+            </span>
             <Link href="/flats" className="text-[11px] font-medium text-brand">
               View →
             </Link>
@@ -186,8 +191,13 @@ export default function DashboardHome() {
         {/* Vehicles — one compact row */}
         <div className="mt-3 rounded-2xl bg-slate-50 px-3.5 py-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Vehicles</span>
-            <Link href="/vehicles" className="text-[11px] font-medium text-brand">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+              Vehicles
+            </span>
+            <Link
+              href="/vehicles"
+              className="text-[11px] font-medium text-brand"
+            >
               View →
             </Link>
           </div>
@@ -198,7 +208,7 @@ export default function DashboardHome() {
               </div>
               <div className="text-[11px] text-slate-500">4-Wheelers</div>
             </div>
-            
+
             <div>
               <div className="text-lg font-extrabold tabular-nums text-teal-700">
                 {loading ? "…" : dash.vehicles.twoWheelers}
@@ -209,7 +219,9 @@ export default function DashboardHome() {
               <div className="text-lg font-extrabold tabular-nums text-orange-600">
                 {loading ? "…" : dash.vehicles.threeWheelers}
               </div>
-              <div className="text-[11px] text-slate-500">Auto (3-Wheelers)</div>
+              <div className="text-[11px] text-slate-500">
+                Auto (3-Wheelers)
+              </div>
             </div>
           </div>
         </div>
@@ -234,39 +246,95 @@ export default function DashboardHome() {
 
         <div className="mt-4 rounded-xl bg-slate-50/80 px-3.5 py-3 text-[11px] leading-relaxed text-slate-500">
           <p>રોકડ હાથમાં = રોકડ જમા − રોકડ ખર્ચ.</p>
-          <p className="mt-1">બેંક બેલેન્સ = બેંક / UPI / ચેક જમા − બેંક / UPI / ચેક ખર્ચ.</p>
+          <p className="mt-1">
+            બેંક બેલેન્સ = બેંક / UPI / ચેક જમા − બેંક / UPI / ચેક ખર્ચ.
+          </p>
         </div>
       </section>
 
-      {/* Expense by Category — dynamic from MongoDB */}
+      {/* By Payment Mode — collected vs spent per mode */}
       <section className="overflow-hidden rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80 sm:p-5">
-        <h2 className="mb-4 text-[17px] font-bold tracking-tight text-navy">Expense by Category</h2>
+        <h2 className="mb-3 text-[17px] font-bold tracking-tight text-navy">
+          By Payment Mode
+        </h2>
 
-        <div className="overflow-hidden rounded-xl bg-slate-50">
-          <div className="flex items-center justify-between px-4 py-2.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              Category
-            </span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              Amount
-            </span>
-          </div>
-
-          {loading ? (
-            <p className="px-4 py-6 text-center text-sm text-slate-400">Loading…</p>
-          ) : dash.expensesByCategory.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-slate-400">No expenses yet.</p>
-          ) : (
-            <ul className="divide-y divide-slate-100 bg-white">
-              {dash.expensesByCategory.map((row) => (
-                <li key={row.category} className="flex items-center justify-between px-4 py-3.5">
-                  <span className="text-sm font-semibold text-navy">{row.category}</span>
-                  <span className="text-sm font-bold tabular-nums text-rose-500">{inr(row.amount)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 border-b border-slate-100 px-1 pb-2 sm:gap-x-4">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Mode
+          </span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Collected
+          </span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Spent
+          </span>
         </div>
+
+        {loading ? (
+          <p className="px-1 py-6 text-center text-sm text-slate-400">
+            Loading…
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {dash.byPaymentMode.map((row) => (
+              <li
+                key={row.mode}
+                className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 px-1 py-3.5 sm:gap-x-4"
+              >
+                <span className="min-w-0 break-words text-sm font-semibold text-navy">
+                  {row.label}
+                </span>
+                <span className="text-sm font-bold tabular-nums text-emerald-600">
+                  {inr(row.collected)}
+                </span>
+                <span className="text-sm font-bold tabular-nums text-rose-500">
+                  {inr(row.spent)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      {/* Expense by Category — dynamic from MongoDB (before By Payment Mode) */}
+      <section className="overflow-hidden rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80 sm:p-5">
+        <h2 className="mb-3 text-[17px] font-bold tracking-tight text-navy">
+          Expense by Category
+        </h2>
+
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-b border-slate-100 px-1 pb-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Category
+          </span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Amount
+          </span>
+        </div>
+
+        {loading ? (
+          <p className="px-1 py-6 text-center text-sm text-slate-400">
+            Loading…
+          </p>
+        ) : dash.expensesByCategory.length === 0 ? (
+          <p className="px-1 py-6 text-center text-sm text-slate-400">
+            No expenses yet.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {dash.expensesByCategory.map((row) => (
+              <li
+                key={row.category}
+                className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 px-1 py-3.5"
+              >
+                <span className="min-w-0 break-words text-sm font-semibold text-navy">
+                  {row.category}
+                </span>
+                <span className="shrink-0 text-sm font-bold tabular-nums text-rose-500">
+                  {inr(row.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <CommonExpenseSplit />
@@ -275,7 +343,9 @@ export default function DashboardHome() {
         <div className="mb-2.5 flex items-center justify-between px-0.5">
           <div>
             <h2 className="font-semibold text-navy">Latest notices</h2>
-            <p className="text-[11px] text-slate-400">Pinned & recent announcements</p>
+            <p className="text-[11px] text-slate-400">
+              Pinned & recent announcements
+            </p>
           </div>
           <Link href="/notices" className="text-xs font-medium text-brand">
             View all →
@@ -285,7 +355,9 @@ export default function DashboardHome() {
           {noticesLoading ? (
             <p className="py-6 text-center text-sm text-slate-400">Loading…</p>
           ) : latestNotices.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-400">હાલમાં કોઈ નવી સૂચના નથી.</p>
+            <p className="py-6 text-center text-sm text-slate-400">
+              હાલમાં કોઈ નવી સૂચના નથી.
+            </p>
           ) : (
             latestNotices.map((n) => (
               <NoticeCard
@@ -336,7 +408,9 @@ export default function DashboardHome() {
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <div>
             <h2 className="font-semibold text-navy">Recent Expenses</h2>
-            <p className="text-[11px] text-slate-400">Sorted by display order</p>
+            <p className="text-[11px] text-slate-400">
+              Sorted by display order
+            </p>
           </div>
           <Link href="/expenses" className="text-xs font-medium text-brand">
             View all →
@@ -348,7 +422,9 @@ export default function DashboardHome() {
           ))}
         </ul>
         {!loading && recentExpenses.length === 0 && (
-          <p className="py-8 text-center text-sm text-slate-400">No expenses yet.</p>
+          <p className="py-8 text-center text-sm text-slate-400">
+            No expenses yet.
+          </p>
         )}
         {loading && recentExpenses.length === 0 && (
           <p className="py-8 text-center text-sm text-slate-400">Loading…</p>

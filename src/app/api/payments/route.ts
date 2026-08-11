@@ -121,6 +121,7 @@ export async function POST(request: Request) {
         ownerName: serialized.ownerName,
         amount: serialized.amount,
         purpose: serialized.paymentPurpose,
+        purposeId: serialized.paymentPurposeId,
       });
     } catch (err) {
       console.error("payment notification error:", err);

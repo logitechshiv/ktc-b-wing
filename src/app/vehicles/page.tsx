@@ -73,21 +73,23 @@ const STICKER_FILTERS: { value: "all" | "yes" | "no"; label: string }[] = [
 
 const TYPE_SORT_RANK: Record<string, number> = { car: 0, bike: 1, auto: 2 };
 
-function sortGroupsByTypeThenFlat(groups: VehicleGroup[]): VehicleGroup[] {
+/** Flat-number-wise listing: cards ordered by flat, vehicles by type under each flat. */
+function sortGroupsByFlatNumber(groups: VehicleGroup[]): VehicleGroup[] {
   return [...groups]
     .map((g) => ({
       ...g,
       vehicles: [...g.vehicles].sort(
         (a, b) =>
           (TYPE_SORT_RANK[a.vehicleType] ?? 99) - (TYPE_SORT_RANK[b.vehicleType] ?? 99) ||
-          Number(a.flatNumber) - Number(b.flatNumber)
+          String(a.vehicleNumber).localeCompare(String(b.vehicleNumber))
       ),
     }))
-    .sort((a, b) => {
-      const aRank = Math.min(...a.vehicles.map((v) => TYPE_SORT_RANK[v.vehicleType] ?? 99));
-      const bRank = Math.min(...b.vehicles.map((v) => TYPE_SORT_RANK[v.vehicleType] ?? 99));
-      return aRank - bRank || Number(a.flatNumber) - Number(b.flatNumber);
-    });
+    .sort(
+      (a, b) =>
+        Number(a.flatNumber) - Number(b.flatNumber) ||
+        a.flatNumber.localeCompare(b.flatNumber) ||
+        a.vehicleOwnerType.localeCompare(b.vehicleOwnerType)
+    );
 }
 
 export default function VehiclesPage() {
@@ -144,7 +146,7 @@ export default function VehiclesPage() {
         sticker: stickerFilter,
         type: typeFilter,
       });
-      setGroups(sortGroupsByTypeThenFlat(data.groups));
+      setGroups(sortGroupsByFlatNumber(data.groups));
       setSummary(data.summary);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load vehicles");
@@ -291,7 +293,7 @@ export default function VehiclesPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Vehicle No / Flat No / Owner / Mobile"
-          className="w-full rounded-full border border-brand/30 bg-brand/5 py-2.5 pl-10 pr-4 text-sm outline-none placeholder:text-slate-400 focus:border-brand focus:bg-white"
+          className="w-full rounded-full border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm outline-none focus:border-brand"
         />
       </div>
 

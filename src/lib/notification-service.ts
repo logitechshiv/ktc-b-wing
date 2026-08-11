@@ -548,11 +548,13 @@ export function notifyCollectionAdded(payment: {
   ownerName?: string;
   amount: number;
   purpose?: string;
+  purposeId?: string;
 }): void {
   const flatNumber = String(payment.flatNumber || "").trim();
   const amount = Number(payment.amount) || 0;
   const owner = String(payment.ownerName || "").trim();
   const purpose = String(payment.purpose || "").trim();
+  const purposeId = String(payment.purposeId || "").trim();
   const who = owner ? ` (${owner})` : "";
   const purposePart = purpose ? ` — ${purpose}` : "";
   enqueueNotification({
@@ -562,7 +564,14 @@ export function notifyCollectionAdded(payment: {
     relatedId: payment.id,
     relatedType: "payment",
     dedupeKey: `COLLECTION_ADDED:${payment.id}`,
-    meta: { flatNumber, ownerName: owner, amount, purpose, targetRoute: "/collections" },
+    meta: {
+      flatNumber,
+      ownerName: owner,
+      amount,
+      purpose,
+      purposeId: purposeId || null,
+      targetRoute: "/collections",
+    },
   });
 }
 
@@ -572,9 +581,11 @@ export function notifyBuilderCollectionAdded(batch: {
   amount: number;
   flatCount: number;
   purpose?: string;
+  purposeId?: string;
 }): void {
   const amount = Number(batch.amount) || 0;
   const purpose = String(batch.purpose || "").trim();
+  const purposeId = String(batch.purposeId || "").trim();
   const purposePart = purpose ? ` — ${purpose}` : "";
   enqueueNotification({
     type: "COLLECTION_ADDED",
@@ -588,6 +599,7 @@ export function notifyBuilderCollectionAdded(batch: {
       amount,
       flatCount: batch.flatCount,
       purpose,
+      purposeId: purposeId || null,
       targetRoute: "/collections",
     },
   });

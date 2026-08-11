@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Building2, Home } from "lucide-react";
 import { inr } from "@/lib/format";
 import type { SafeUser } from "@/lib/auth-client";
@@ -129,6 +130,7 @@ function pickFirstPurpose(list: PurposeRecord[]): PurposeRecord | null {
 }
 
 export default function CollectionsPage() {
+  const router = useRouter();
   const [user, setUser] = useState<SafeUser | null>(null);
   const isSuperAdmin = user?.role === "super_admin";
 
@@ -147,6 +149,7 @@ export default function CollectionsPage() {
 
   /** Accordion — only one purpose open at a time; null = all collapsed */
   const [expandedPurposeId, setExpandedPurposeId] = useState<string | null>(null);
+  const appliedNotificationDeepLinkRef = useRef(false);
 
   const [showForm, setShowForm] = useState(false);
   const [formTab, setFormTab] = useState<CollectionFlatTab>("sold");
@@ -240,6 +243,45 @@ export default function CollectionsPage() {
     }, 250);
     return () => window.clearTimeout(t);
   }, [load]);
+
+  /**
+   * Deep link from /notifications:
+   * /collections?purposeId=... or /collections?purpose=Title
+   * Selects the purpose filter and opens its accordion.
+   */
+  useEffect(() => {
+    if (appliedNotificationDeepLinkRef.current) return;
+    if (!purposeReady || purposes.length === 0) return;
+    if (typeof window === "undefined") return;
+
+    const sp = new URLSearchParams(window.location.search);
+    const purposeIdParam = (sp.get("purposeId") || "").trim();
+    const purposeTitleParam = (sp.get("purpose") || "").trim();
+    if (!purposeIdParam && !purposeTitleParam) return;
+
+    let targetId = "";
+    if (purposeIdParam && purposes.some((p) => p.id === purposeIdParam)) {
+      targetId = purposeIdParam;
+    } else if (purposeTitleParam) {
+      const needle = purposeTitleParam.toLowerCase();
+      const match = purposes.find((p) => {
+        const title = p.title.trim().toLowerCase();
+        const short = shortPurposeTitle(p.title).toLowerCase();
+        return title === needle || short === needle;
+      });
+      if (match) targetId = match.id;
+    }
+
+    appliedNotificationDeepLinkRef.current = true;
+
+    if (targetId) {
+      setPurposeFilterId(targetId);
+      setExpandedPurposeId(targetId);
+    }
+
+    // Clear query so refresh/back don't re-trigger unexpectedly
+    router.replace("/collections", { scroll: false });
+  }, [purposeReady, purposes, router]);
 
   /** Load pending flats for New Collection when purpose changes */
   const refreshFormPending = useCallback(async (purposeIdValue: string) => {
@@ -759,7 +801,7 @@ export default function CollectionsPage() {
               value={flatQ}
               onChange={(e) => setFlatQ(e.target.value)}
               placeholder="e.g. 201"
-              className="w-full rounded-xl border border-brand/30 bg-brand/5 px-3 py-2.5 text-sm outline-none focus:border-brand focus:bg-white"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-brand"
             />
           </label>
 

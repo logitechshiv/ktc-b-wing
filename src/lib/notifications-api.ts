@@ -78,6 +78,47 @@ export function notificationHref(type: NotificationType | string): string {
   return resolveNotificationRoute({ type });
 }
 
+export function isCollectionNotification(n: {
+  type?: string | null;
+  relatedType?: string | null;
+}): boolean {
+  const type = String(n.type || "").trim().toUpperCase();
+  const related = String(n.relatedType || "").trim().toLowerCase();
+  return (
+    type === "COLLECTION_ADDED" ||
+    related === "payment" ||
+    related === "builder_payment"
+  );
+}
+
+/**
+ * Destination when clicking a notification on `/notifications`.
+ * Collection items deep-link to the related purpose when possible.
+ * Returns null to keep the user on `/notifications` (missing/invalid collection purpose).
+ */
+export function resolveNotificationPageHref(n: {
+  type?: string | null;
+  relatedType?: string | null;
+  targetRoute?: string | null;
+  meta?: Record<string, unknown> | null;
+}): string | null {
+  if (isCollectionNotification(n)) {
+    const purposeId = String(n.meta?.purposeId || "").trim();
+    const purpose = String(n.meta?.purpose || "").trim();
+    if (purposeId) {
+      return `/collections?purposeId=${encodeURIComponent(purposeId)}`;
+    }
+    if (purpose) {
+      return `/collections?purpose=${encodeURIComponent(purpose)}`;
+    }
+    return null;
+  }
+
+  const route = resolveNotificationRoute(n);
+  if (!route || route === "/" || route === "/notifications") return null;
+  return route;
+}
+
 export interface UserNotification {
   id: string;
   recipientId: string;

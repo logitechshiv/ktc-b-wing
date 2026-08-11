@@ -3,6 +3,13 @@ export interface ExpenseByCategory {
   amount: number;
 }
 
+export interface PaymentModeBreakdown {
+  mode: string;
+  label: string;
+  collected: number;
+  spent: number;
+}
+
 export interface DashboardRecentExpense {
   id: string;
   category: string;
@@ -34,6 +41,7 @@ export interface DashboardStats {
     threeWheelers: number;
   };
   expensesByCategory: ExpenseByCategory[];
+  byPaymentMode: PaymentModeBreakdown[];
   recentExpenses: DashboardRecentExpense[];
 }
 
@@ -46,6 +54,12 @@ export const EMPTY_DASHBOARD: DashboardStats = {
   flats: { total: 0, sold: 0, available: 0 },
   vehicles: { fourWheelers: 0, twoWheelers: 0, threeWheelers: 0 },
   expensesByCategory: [],
+  byPaymentMode: [
+    { mode: "cash", label: "Cash", collected: 0, spent: 0 },
+    { mode: "upi", label: "UPI", collected: 0, spent: 0 },
+    { mode: "bank", label: "Bank Transfer", collected: 0, spent: 0 },
+    { mode: "cheque", label: "Cheque", collected: 0, spent: 0 },
+  ],
   recentExpenses: [],
 };
 
@@ -82,6 +96,14 @@ export async function readDashboard(): Promise<DashboardStats> {
           amount: Number(row.amount) || 0,
         }))
       : [],
+    byPaymentMode: Array.isArray(data.byPaymentMode)
+      ? (data.byPaymentMode as PaymentModeBreakdown[]).map((row) => ({
+          mode: String(row.mode || ""),
+          label: String(row.label || row.mode || ""),
+          collected: Number(row.collected) || 0,
+          spent: Number(row.spent) || 0,
+        }))
+      : EMPTY_DASHBOARD.byPaymentMode,
     recentExpenses: Array.isArray(data.recentExpenses)
       ? (data.recentExpenses as DashboardRecentExpense[]).map((row) => ({
           id: String(row.id || ""),

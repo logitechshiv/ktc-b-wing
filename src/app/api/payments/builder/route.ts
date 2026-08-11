@@ -69,6 +69,7 @@ export async function POST(request: Request) {
         amount: result.data.totalAmount,
         flatCount: result.data.flatCount,
         purpose: details?.purpose?.title || "",
+        purposeId: paymentPurposeId,
       });
     } catch (err) {
       console.error("builder payment notification error:", err);

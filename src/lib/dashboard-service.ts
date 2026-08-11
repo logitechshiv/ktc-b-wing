@@ -10,6 +10,13 @@ export interface ExpenseByCategory {
   amount: number;
 }
 
+export interface PaymentModeBreakdown {
+  mode: string;
+  label: string;
+  collected: number;
+  spent: number;
+}
+
 export interface DashboardStats {
   totalBalance: number;
   totalCollection: number;
@@ -27,6 +34,7 @@ export interface DashboardStats {
     threeWheelers: number;
   };
   expensesByCategory: ExpenseByCategory[];
+  byPaymentMode: PaymentModeBreakdown[];
   recentExpenses: Array<{
     id: string;
     category: string;
@@ -44,6 +52,13 @@ export interface DashboardStats {
 
 const BANK_MODES = ["bank", "upi", "cheque"] as const;
 
+const PAYMENT_MODE_ROWS: { mode: string; label: string }[] = [
+  { mode: "cash", label: "Cash" },
+  { mode: "upi", label: "UPI" },
+  { mode: "bank", label: "Bank Transfer" },
+  { mode: "cheque", label: "Cheque" },
+];
+
 function sumByMode(
   rows: { _id: string | null; total: number }[],
   modes: readonly string[]
@@ -54,6 +69,17 @@ function sumByMode(
 
 function sumCash(rows: { _id: string | null; total: number }[]) {
   return sumByMode(rows, ["cash"]);
+}
+
+function modeTotal(
+  rows: { _id: string | null; total: number }[],
+  mode: string
+): number {
+  const key = mode.toLowerCase();
+  return rows.reduce(
+    (s, r) => (String(r._id || "").toLowerCase() === key ? s + (r.total || 0) : s),
+    0
+  );
 }
 
 /**
@@ -153,6 +179,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         category: String(r._id),
         amount: Number(r.total) || 0,
       })),
+    byPaymentMode: PAYMENT_MODE_ROWS.map((row) => ({
+      mode: row.mode,
+      label: row.label,
+      collected: modeTotal(paymentAgg, row.mode),
+      spent: modeTotal(expenseAgg, row.mode),
+    })),
     recentExpenses: recentExpenseDocs.map((d) => {
       const s = serializeExpense(d as never);
       return {

@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { SafeUser } from "@/lib/auth-client";
 import {
   deleteNotification,
   markAllNotificationsRead,
   markNotificationRead,
-  resolveNotificationRoute,
+  resolveNotificationPageHref,
   readNotificationsForEveryone,
   type UserNotification,
 } from "@/lib/notifications-api";
@@ -29,6 +30,7 @@ function formatWhen(iso: string) {
 }
 
 export default function NotificationsPage() {
+  const router = useRouter();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [items, setItems] = useState<UserNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -81,11 +83,7 @@ export default function NotificationsPage() {
   }, [load]);
 
   function onOpen(n: UserNotification) {
-    const href = resolveNotificationRoute(n);
-    const destination =
-      !href || href === "/notifications" || href.startsWith("/notifications/")
-        ? "/"
-        : href;
+    const destination = resolveNotificationPageHref(n);
 
     if (!n.isRead) {
       setUnreadCount((c) => Math.max(0, c - 1));
@@ -99,11 +97,14 @@ export default function NotificationsPage() {
       void markNotificationRead(n.id, authenticated)
         .then((result) => setUnreadCount(result.unreadCount))
         .catch(() => {
-          /* still navigate */
+          /* still navigate when possible */
         });
     }
 
-    window.location.assign(destination);
+    // Collection without purpose stays on /notifications; otherwise open related root.
+    if (destination) {
+      router.push(destination);
+    }
   }
 
   async function onMarkAll() {
@@ -208,8 +209,8 @@ export default function NotificationsPage() {
                 <div className="flex items-start gap-2 px-4 py-3.5">
                   <button
                     type="button"
-                    onClick={() => void onOpen(n)}
-                    className="min-w-0 flex-1 text-left"
+                    onClick={() => onOpen(n)}
+                    className="min-w-0 flex-1 cursor-pointer text-left"
                   >
                     <div className="flex items-center gap-2">
                       <span

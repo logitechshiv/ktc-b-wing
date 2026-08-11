@@ -5,10 +5,10 @@ import Flat from "@/models/Flat";
 import { requireSuperAdmin } from "@/lib/require-super-admin";
 import {
   computeVehicleSummary,
-  compareVehiclesByTypeThenFlat,
+  compareVehiclesByFlatThenType,
+  compareVehicleGroupsByFlat,
   serializeVehicle,
   validateBulkVehiclePayload,
-  vehicleTypeSortRank,
 } from "@/lib/vehicle-utils";
 
 export const runtime = "nodejs";
@@ -17,6 +17,7 @@ export const runtime = "nodejs";
  * GET /api/vehicles
  * Query: q, sticker=yes|no, type=car|bike|...
  * Public — guests can view.
+ * Listed flat-number-wise (ascending), with vehicle details under each flat card.
  *
  * Card contact details are resolved from the flats registry using vehicleOwnerType:
  * - owner  → flat owner name/mobile
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
 
     const [docs, allForSummary, flats] = await Promise.all([
       Vehicle.find(filter)
-        .sort({ vehicleType: 1, flatNumber: 1, vehicleNumber: 1 })
+        .sort({ flatNumber: 1, vehicleType: 1, vehicleNumber: 1 })
         .lean(),
       Vehicle.find({}).select("vehicleType stickerIssued").lean(),
       Flat.find({}).select("flatNumber ownerName ownerMobile renterName renterMobile").lean(),
@@ -106,7 +107,7 @@ export async function GET(request: Request) {
 
       return base;
     })
-      .sort(compareVehiclesByTypeThenFlat);
+      .sort(compareVehiclesByFlatThenType);
 
     const summary = computeVehicleSummary(
       allForSummary as Array<{ vehicleType: string; stickerIssued?: boolean }>
@@ -144,19 +145,11 @@ export async function GET(request: Request) {
     }
 
     for (const group of map.values()) {
-      group.vehicles.sort(compareVehiclesByTypeThenFlat);
+      group.vehicles.sort(compareVehiclesByFlatThenType);
     }
 
-    const groups = Array.from(map.values()).sort((a, b) => {
-      const aRank = Math.min(...a.vehicles.map((v) => vehicleTypeSortRank(v.vehicleType)));
-      const bRank = Math.min(...b.vehicles.map((v) => vehicleTypeSortRank(v.vehicleType)));
-      return (
-        aRank - bRank ||
-        Number(a.flatNumber) - Number(b.flatNumber) ||
-        a.flatNumber.localeCompare(b.flatNumber) ||
-        a.vehicleOwnerType.localeCompare(b.vehicleOwnerType)
-      );
-    });
+    // Flat-number-wise listing: 101 → 102 → … with vehicle details under each card
+    const groups = Array.from(map.values()).sort(compareVehicleGroupsByFlat);
 
     return NextResponse.json({
       success: true,
