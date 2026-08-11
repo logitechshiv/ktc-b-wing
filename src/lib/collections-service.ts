@@ -151,6 +151,7 @@ export interface PurposeDetailsResult {
     paymentId: string;
     paymentSource: "owner" | "builder";
     whatsappSent: boolean;
+    notes?: string;
   }>;
   pending: Array<{
     flatId: string;
