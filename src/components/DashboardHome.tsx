@@ -124,16 +124,23 @@ export default function DashboardHome() {
         </h2>
 
         <div className="space-y-3">
-          <SummaryTile
+          {/* <SummaryTile
+            value={loading ? "…" : inr(dash.totalBalance)}
+            label="Total Balance"
+            icon="⚖️"
+            tone="violet"
+            wide
+          /> */}   
+
+          <div className="grid grid-cols-3 gap-3">
+            <SummaryTile
             value={loading ? "…" : inr(dash.totalBalance)}
             label="Total Balance"
             icon="⚖️"
             tone="violet"
             wide
           />
-
-          <div className="grid grid-cols-2 gap-3">
-            <SummaryTile
+            {/* <SummaryTile
               value={loading ? "…" : inr(dash.totalCollection)}
               label="Collected"
               icon="📥"
@@ -144,7 +151,7 @@ export default function DashboardHome() {
               label="Expense"
               icon="📤"
               tone="rose"
-            />
+            /> */}
             <SummaryTile
               value={loading ? "…" : inr(dash.cashInHand)}
               label="Cash in Hand"
