@@ -24,11 +24,13 @@ import {
 import {
   createBuilderPayment,
   createPaymentsBulk,
+  deletePayment,
+  updatePayment,
   type CollectPersonOption,
   type PaymentMode,
 } from "@/lib/payments-api";
 import { readFlats, type FlatRecord } from "@/lib/flats-api";
-import type { PurposePendingFlat } from "@/lib/payment-purposes-api";
+import type { PurposePaidFlat, PurposePendingFlat } from "@/lib/payment-purposes-api";
 import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
 import PurposeModal from "@/components/collections/PurposeModal";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
@@ -38,6 +40,7 @@ import PurposeScopeSelect from "@/components/collections/PurposeScopeSelect";
 import CollectionModal, {
   type CollectionFlatTab,
 } from "@/components/collections/CollectionModal";
+import EditCollectionModal from "@/components/collections/EditCollectionModal";
 
 function shortPurposeTitle(title: string) {
   return title
@@ -176,6 +179,19 @@ export default function CollectionsPage() {
   const [deletePurposeTarget, setDeletePurposeTarget] = useState<PurposeRecord | null>(null);
   const [deletingPurpose, setDeletingPurpose] = useState(false);
   const [deletePurposeError, setDeletePurposeError] = useState<string | null>(null);
+
+  const [editingPayment, setEditingPayment] = useState<PurposePaidFlat | null>(null);
+  const [editPaymentPurposeTitle, setEditPaymentPurposeTitle] = useState("");
+  const [editPaymentPurposeId, setEditPaymentPurposeId] = useState("");
+  const [editAmount, setEditAmount] = useState(0);
+  const [editMode, setEditMode] = useState<PaymentMode>("cash");
+  const [editDate, setEditDate] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editPaymentSaving, setEditPaymentSaving] = useState(false);
+  const [editPaymentError, setEditPaymentError] = useState<string | null>(null);
+  const [deletePaymentTarget, setDeletePaymentTarget] = useState<PurposePaidFlat | null>(null);
+  const [deletingPayment, setDeletingPayment] = useState(false);
+  const [deletePaymentError, setDeletePaymentError] = useState<string | null>(null);
 
   const [purposeDetails, setPurposeDetails] = useState<PurposeDetails | null>(null);
   const [purposeDetailsLoading, setPurposeDetailsLoading] = useState(false);
@@ -570,6 +586,87 @@ export default function CollectionsPage() {
     }
   }
 
+  function openEditPayment(row: PurposePaidFlat, purpose: PurposeRecord) {
+    if (!isSuperAdmin || !row.paymentId) return;
+    const mode = String(row.paymentMode || "cash").toLowerCase() as PaymentMode;
+    setEditingPayment(row);
+    setEditPaymentPurposeId(purpose.id);
+    setEditPaymentPurposeTitle(purpose.title);
+    setEditAmount(Number(row.amount) || 0);
+    setEditMode(
+      mode === "bank" || mode === "upi" || mode === "cheque" || mode === "cash" ? mode : "cash"
+    );
+    setEditDate(row.paymentDate ? String(row.paymentDate).slice(0, 10) : new Date().toISOString().slice(0, 10));
+    setEditNotes(row.notes || "");
+    setEditPaymentError(null);
+  }
+
+  function closeEditPayment() {
+    if (editPaymentSaving) return;
+    setEditingPayment(null);
+    setEditPaymentError(null);
+  }
+
+  async function saveEditPayment() {
+    if (!editingPayment?.paymentId || editPaymentSaving) return;
+    if (editAmount <= 0) {
+      setEditPaymentError("Amount must be greater than 0");
+      return;
+    }
+    setEditPaymentSaving(true);
+    setEditPaymentError(null);
+    try {
+      await updatePayment(editingPayment.paymentId, {
+        flatId: editingPayment.flatId,
+        floorNumber: editingPayment.floorNumber,
+        flatNumber: editingPayment.flatNumber,
+        ownerName: editingPayment.ownerName,
+        paymentPurposeId: editPaymentPurposeId,
+        paymentPurpose: editPaymentPurposeTitle,
+        amount: editAmount,
+        paymentMode: editMode,
+        paymentDate: editDate,
+        notes: editNotes.trim(),
+        whatsappSent: editingPayment.whatsappSent,
+      });
+      flashSuccess("Collection updated");
+      setEditingPayment(null);
+      await loadPurposes();
+      if (expandedPurposeId) {
+        await loadPurposeDetails(expandedPurposeId, { silent: true });
+      }
+      notifyDataChanged("payment");
+    } catch (err) {
+      setEditPaymentError(err instanceof Error ? err.message : "Unable to update collection");
+    } finally {
+      setEditPaymentSaving(false);
+    }
+  }
+
+  async function handlePaymentDelete() {
+    if (!deletePaymentTarget?.paymentId || deletingPayment) return;
+    setDeletingPayment(true);
+    setDeletePaymentError(null);
+    try {
+      await deletePayment(deletePaymentTarget.paymentId);
+      setDeletePaymentTarget(null);
+      flashSuccess("Collection deleted");
+      await loadPurposes();
+      if (expandedPurposeId) {
+        await loadPurposeDetails(expandedPurposeId, { silent: true });
+      }
+      notifyDataChanged("payment");
+    } catch (err) {
+      setDeletePaymentError(
+        err instanceof Error
+          ? err.message
+          : "Unable to delete this collection. Please try again."
+      );
+    } finally {
+      setDeletingPayment(false);
+    }
+  }
+
   function openCollectForm(lockedPurposeId?: string | null) {
     setFormSelectedKeys([]);
     setFormPendingFlats([]);
@@ -852,7 +949,7 @@ export default function CollectionsPage() {
 
         {statusFilter === "paid" && (
           <div className="mt-2 flex flex-wrap gap-2">
-            {(["all", "cash", "bank", "upi"] as const).map((m) => (
+            {(["all", "cash", "bank", "upi", "cheque"] as const).map((m) => (
               <button
                 key={m}
                 type="button"
@@ -1136,6 +1233,11 @@ export default function CollectionsPage() {
                     statusFilter={statusFilter}
                     modeFilter={modeFilter}
                     hideHeader
+                    onEditPayment={(row) => openEditPayment(row, purpose)}
+                    onDeletePayment={(row) => {
+                      setDeletePaymentError(null);
+                      setDeletePaymentTarget(row);
+                    }}
                   />
                 </div>
               )}
@@ -1261,6 +1363,50 @@ export default function CollectionsPage() {
         <p className="mt-2 text-xs text-slate-400">
           All payment records linked to this Purpose will also be deleted permanently. This action
           cannot be undone.
+        </p>
+      </ConfirmDeleteModal>
+
+      <EditCollectionModal
+        open={!!editingPayment && isSuperAdmin}
+        payment={editingPayment}
+        purposeTitle={editPaymentPurposeTitle}
+        amount={editAmount}
+        paymentMode={editMode}
+        paymentDate={editDate}
+        notes={editNotes}
+        saving={editPaymentSaving}
+        error={editPaymentError}
+        onClose={closeEditPayment}
+        onAmountChange={setEditAmount}
+        onModeChange={setEditMode}
+        onDateChange={setEditDate}
+        onNotesChange={setEditNotes}
+        onSave={() => void saveEditPayment()}
+      />
+
+      <ConfirmDeleteModal
+        open={!!deletePaymentTarget && isSuperAdmin}
+        title="Delete Collection?"
+        loading={deletingPayment}
+        error={deletePaymentError}
+        onCancel={() => {
+          if (deletingPayment) return;
+          setDeletePaymentTarget(null);
+          setDeletePaymentError(null);
+        }}
+        onConfirm={() => void handlePaymentDelete()}
+      >
+        <p>Are you sure you want to delete this collection?</p>
+        {deletePaymentTarget ? (
+          <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-navy">
+            <span className="font-semibold">Flat:</span>{" "}
+            <span className="font-bold">{deletePaymentTarget.flatNumber}</span>
+            <br />
+            <span className="font-semibold">Amount:</span> {inr(deletePaymentTarget.amount)}
+          </p>
+        ) : null}
+        <p className="mt-2 text-xs text-slate-400">
+          This payment will be removed and the flat will show as pending again.
         </p>
       </ConfirmDeleteModal>
     </div>

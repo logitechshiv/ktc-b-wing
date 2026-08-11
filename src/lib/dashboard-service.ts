@@ -83,6 +83,63 @@ function modeTotal(
 }
 
 /**
+ * Payments that count as actually received for dashboard Collected:
+ * - Always exclude flats with no payment row (pending/unpaid are not in `payments`).
+ * - For sold-only purposes, also exclude payments on non-payable flats
+ *   (unsold / no owner) so Collected matches paid-flat totals, not target totals.
+ */
+const RECEIVED_PAYMENT_PIPELINE = [
+  {
+    $lookup: {
+      from: "payment_purposes",
+      localField: "paymentPurposeId",
+      foreignField: "_id",
+      as: "purpose",
+    },
+  },
+  {
+    $lookup: {
+      from: "flats",
+      localField: "flatId",
+      foreignField: "_id",
+      as: "flat",
+    },
+  },
+  { $unwind: { path: "$purpose", preserveNullAndEmptyArrays: true } },
+  { $unwind: { path: "$flat", preserveNullAndEmptyArrays: true } },
+  {
+    $match: {
+      $expr: {
+        $or: [
+          { $eq: [{ $ifNull: ["$purpose.collectionScope", "sold"] }, "all"] },
+          {
+            $and: [
+              { $in: ["$flat.status", ["sold", "rent"]] },
+              {
+                $gt: [
+                  {
+                    $strLenCP: {
+                      $trim: { input: { $ifNull: ["$flat.ownerName", ""] } },
+                    },
+                  },
+                  0,
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  },
+  {
+    $group: {
+      _id: "$paymentMode",
+      total: { $sum: "$amount" },
+    },
+  },
+] as const;
+
+/**
  * Aggregated dashboard stats from payments, expenses, flats, vehicles.
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -91,12 +148,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const [paymentAgg, expenseAgg, expenseByCategoryAgg, recentExpenseDocs, flatAgg, vehicleAgg] =
     await Promise.all([
       Payment.aggregate<{ _id: string | null; total: number }>([
-        {
-          $group: {
-            _id: "$paymentMode",
-            total: { $sum: "$amount" },
-          },
-        },
+        ...RECEIVED_PAYMENT_PIPELINE,
       ]).exec(),
       Expense.aggregate<{ _id: string | null; total: number }>([
         {

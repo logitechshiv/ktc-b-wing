@@ -80,8 +80,12 @@ export async function getPurposeProgressStats(
           {
             $group: {
               _id: "$paymentPurposeId",
-              paidFlats: { $addToSet: "$flatNumber" },
-              collectedAmount: { $sum: "$amount" },
+              payments: {
+                $push: {
+                  flatNumber: "$flatNumber",
+                  amount: "$amount",
+                },
+              },
             },
           },
         ]);
@@ -89,21 +93,26 @@ export async function getPurposeProgressStats(
   const paidMap = new Map(
     paidAgg.map((row) => [
       String(row._id),
-      {
-        paidFlatNumbers: (row.paidFlats as string[]).map(String),
-        collectedAmount: Number(row.collectedAmount) || 0,
-      },
+      (row.payments as Array<{ flatNumber?: string; amount?: number }>) || [],
     ])
   );
 
   return purposes.map((p) => {
     const scope = normalizeCollectionScope(p.collectionScope);
-    const stats = paidMap.get(p.id) || { paidFlatNumbers: [] as string[], collectedAmount: 0 };
+    const payments = paidMap.get(p.id) || [];
+    // One amount per flat; sold-scope ignores payments outside payable flats
+    const byFlat = new Map<string, number>();
+    for (const row of payments) {
+      const flatNumber = String(row.flatNumber || "");
+      if (!flatNumber) continue;
+      if (scope !== "all" && !payableFlatNumbers.has(flatNumber)) continue;
+      if (!byFlat.has(flatNumber)) {
+        byFlat.set(flatNumber, Number(row.amount) || 0);
+      }
+    }
+    const collected = byFlat.size;
+    const collectedAmount = [...byFlat.values()].reduce((s, n) => s + n, 0);
     const total = scope === "all" ? totalFlats : soldFlatCount;
-    const collected =
-      scope === "all"
-        ? stats.paidFlatNumbers.length
-        : stats.paidFlatNumbers.filter((n) => payableFlatNumbers.has(n)).length;
     const pending = Math.max(0, total - collected);
     const collectionPercent = total > 0 ? Math.round((collected / total) * 100) : 0;
     return {
@@ -112,7 +121,7 @@ export async function getPurposeProgressStats(
       collected,
       pending,
       pendingAmount: pending * (p.amount || 0),
-      collectedAmount: stats.collectedAmount,
+      collectedAmount,
       collectionPercent,
     };
   });
@@ -230,6 +239,7 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
         paymentId: serialized.id,
         paymentSource: isBuilder ? "builder" : "owner",
         whatsappSent: serialized.whatsappSent,
+        notes: serialized.notes || "",
       });
       continue;
     }
@@ -485,7 +495,7 @@ export async function createBuilderPaymentDistribution(
     return { ok: false, message: "Builder Name is required", status: 400 };
   }
   if (!PAYMENT_MODES.includes(paymentMode)) {
-    return { ok: false, message: "Payment Mode must be cash, bank or upi", status: 400 };
+    return { ok: false, message: "Payment Mode must be cash, bank, upi or cheque", status: 400 };
   }
   if (!Number.isFinite(amount) || amount <= 0) {
     return { ok: false, message: "Amount must be greater than 0", status: 400 };

@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     }
     if (!PAYMENT_MODES.includes(paymentMode)) {
       return NextResponse.json(
-        { success: false, message: "Payment Mode must be cash, bank or upi" },
+        { success: false, message: "Payment Mode must be cash, bank, upi or cheque" },
         { status: 400 }
       );
     }

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { inr, fmtDateDMY } from "@/lib/format";
 import type {
   PurposeDetails,
+  PurposePaidFlat,
   PurposePendingFlat,
   PurposeRecord,
 } from "@/lib/payment-purposes-api";
@@ -81,11 +82,13 @@ interface Props {
   searchQuery?: string;
   /** paid | pending — when omitted / "all", show both lists */
   statusFilter?: "paid" | "pending" | "all";
-  /** all = every mode; cash | bank | upi = paid records only */
-  modeFilter?: "all" | "cash" | "bank" | "upi";
+  /** all = every mode; cash | bank | upi | cheque = paid records only */
+  modeFilter?: "all" | "cash" | "bank" | "upi" | "cheque";
   /** When true, title/description are shown by the parent accordion */
   hideHeader?: boolean;
   onClose?: () => void;
+  onEditPayment?: (row: PurposePaidFlat) => void;
+  onDeletePayment?: (row: PurposePaidFlat) => void;
 }
 
 export default function PurposeDetailsPanel({
@@ -97,6 +100,8 @@ export default function PurposeDetailsPanel({
   statusFilter = "all",
   modeFilter = "all",
   hideHeader = false,
+  onEditPayment,
+  onDeletePayment,
 }: Props) {
   const [pendingScope, setPendingScope] = useState<PendingScopeFilter>("all");
   const q = searchQuery.trim().toLowerCase();
@@ -219,6 +224,24 @@ export default function PurposeDetailsPanel({
                           <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:border-amber-600/50 dark:bg-amber-950 dark:text-amber-300">
                             Builder
                           </span>
+                        )}
+                        {isSuperAdmin && !!row.paymentId && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => onEditPayment?.(row)}
+                              className="inline-flex items-center rounded-lg border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onDeletePayment?.(row)}
+                              className="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
+                            >
+                              Delete
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>

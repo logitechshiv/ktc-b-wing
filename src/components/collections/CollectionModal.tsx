@@ -354,15 +354,15 @@ export default function CollectionModal({
               </label>
               <div>
                 <div className="mb-1.5 text-xs font-semibold text-slate-600">Payment Method</div>
-                <div className="flex gap-2">
-                  {(["cash", "bank", "upi"] as const).map((m) => (
+                <div className="flex flex-wrap gap-2">
+                  {(["cash", "bank", "upi", "cheque"] as const).map((m) => (
                     <button
                       key={m}
                       type="button"
                       disabled={soldBlocked}
                       onClick={() => onModeChange(m)}
                       className={
-                        "flex-1 rounded-xl border px-3 py-2 text-sm capitalize disabled:opacity-50 " +
+                        "min-w-[4.5rem] flex-1 rounded-xl border px-3 py-2 text-sm capitalize disabled:opacity-50 " +
                         (formMode === m
                           ? "border-brand bg-brand/5 font-medium text-brand"
                           : "border-slate-200 text-slate-600")
@@ -422,15 +422,15 @@ export default function CollectionModal({
 
               <div>
                 <div className="mb-1.5 text-xs font-semibold text-slate-600">Payment Method</div>
-                <div className="flex gap-2">
-                  {(["cash", "bank", "upi"] as const).map((m) => (
+                <div className="flex flex-wrap gap-2">
+                  {(["cash", "bank", "upi", "cheque"] as const).map((m) => (
                     <button
                       key={m}
                       type="button"
                       disabled={unsoldBlocked}
                       onClick={() => onModeChange(m)}
                       className={
-                        "flex-1 rounded-xl border px-3 py-2 text-sm capitalize disabled:opacity-50 " +
+                        "min-w-[4.5rem] flex-1 rounded-xl border px-3 py-2 text-sm capitalize disabled:opacity-50 " +
                         (formMode === m
                           ? "border-brand bg-brand/5 font-medium text-brand"
                           : "border-slate-200 text-slate-600")

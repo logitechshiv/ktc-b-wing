@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 
 /**
  * GET /api/payments
- * Query: q, purposeId, mode=cash|bank|upi
+ * Query: q, purposeId, mode=cash|bank|upi|cheque
  * When purposeId is set, returns only that round's payments + summary.
  */
 export async function GET(request: Request) {

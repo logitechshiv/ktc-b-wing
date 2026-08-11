@@ -49,6 +49,7 @@ export interface PurposePaidFlat {
   paymentId: string;
   paymentSource?: "owner" | "builder";
   whatsappSent: boolean;
+  notes?: string;
 }
 
 export interface PurposePendingFlat {
@@ -194,6 +195,7 @@ export async function readPurposeDetails(id: string): Promise<PurposeDetails> {
       paymentId: String(row.paymentId ?? ""),
       paymentSource: row.paymentSource === "builder" ? ("builder" as const) : ("owner" as const),
       whatsappSent: !!row.whatsappSent,
+      notes: String(row.notes ?? ""),
     };
   });
 

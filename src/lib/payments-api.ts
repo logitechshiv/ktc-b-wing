@@ -1,4 +1,4 @@
-export type PaymentMode = "cash" | "bank" | "upi";
+export type PaymentMode = "cash" | "bank" | "upi" | "cheque";
 
 export interface PaymentRecord {
   id: string;

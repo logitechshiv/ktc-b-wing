@@ -1,6 +1,6 @@
 import mongoose, { Schema, models, model, type InferSchemaType, type Model } from "mongoose";
 
-export const PAYMENT_MODES = ["cash", "bank", "upi"] as const;
+export const PAYMENT_MODES = ["cash", "bank", "upi", "cheque"] as const;
 export type DbPaymentMode = (typeof PAYMENT_MODES)[number];
 
 export const PAYMENT_SOURCES = ["owner", "builder"] as const;

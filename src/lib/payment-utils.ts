@@ -169,7 +169,7 @@ export function validatePaymentPayload(
   }
   if (!paymentPurposeId) return { ok: false, message: "Payment Purpose is required" };
   if (!PAYMENT_MODES.includes(paymentMode)) {
-    return { ok: false, message: "Payment Mode must be cash, bank or upi" };
+    return { ok: false, message: "Payment Mode must be cash, bank, upi or cheque" };
   }
   if (!Number.isFinite(amount) || amount <= 0) {
     return { ok: false, message: "Amount must be greater than 0" };
