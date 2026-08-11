@@ -923,6 +923,7 @@ export default function CollectionsPage() {
             floorNumber: Number(row.floorNumber) || 0,
             ownerName,
             ownerMobile: String(row.ownerMobile ?? ""),
+            renterName: String(row.renterName ?? "").trim(),
             hasOwner: typeof row.hasOwner === "boolean" ? !!row.hasOwner : !!ownerName.trim(),
             pendingAmount: Number(row.pendingAmount) || 0,
             flatStatus: row.flatStatus ? String(row.flatStatus) : undefined,
