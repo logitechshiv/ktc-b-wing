@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Providers from "@/components/Providers";
 import AppShell from "@/components/AppShell";
-import { SpeedInsights } from "@vercel/speed-insights/next"
+import { SpeedInsights } from "@vercel/speed-insights/next";
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://ktc-b-wing.vercel.app"),
   title: "KCT-3 B-Wing Management System",
@@ -51,7 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans antialiased">
         <Providers>
           <AppShell>{children}</AppShell>
-          <SpeedInsights/>
+          <SpeedInsights />
         </Providers>
       </body>
     </html>
