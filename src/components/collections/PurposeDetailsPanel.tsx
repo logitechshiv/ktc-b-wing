@@ -67,7 +67,10 @@ export type PendingScopeFilter = "all" | "sold" | "builder";
 
 function isSoldPending(row: PurposePendingFlat) {
   const status = String(row.flatStatus || "");
-  return status !== "available" && flatHasOwner(row.ownerName, row.hasOwner);
+  if (status === "available") return false;
+  const hasOwner = flatHasOwner(row.ownerName, row.hasOwner);
+  const hasRenter = !!(row.renterName || "").trim();
+  return hasOwner || hasRenter;
 }
 
 function isBuilderPending(row: PurposePendingFlat) {
@@ -123,7 +126,14 @@ export default function PurposeDetailsPanel({
     if (!details) return [];
     return details.pending.filter((row) => {
       if (row.pendingAmount <= 0) return false;
-      if (!matchesSearch(q, row.flatNumber, row.ownerName || "builder")) return false;
+      if (
+        !matchesSearch(
+          q,
+          row.flatNumber,
+          `${row.ownerName || ""} ${row.renterName || ""} builder`
+        )
+      )
+        return false;
 
       if (pendingScope === "sold") return isSoldPending(row);
       if (pendingScope === "builder") return isBuilderPending(row);
@@ -299,7 +309,13 @@ export default function PurposeDetailsPanel({
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="truncate font-bold text-navy">
-                            {isUnsold ? "Builder" : displayOwnerName(row.ownerName)}
+                            {isUnsold
+                              ? "Builder"
+                              : (row.ownerName || "").trim()
+                                ? displayOwnerName(row.ownerName)
+                                : (row.renterName || "").trim()
+                                  ? `${row.renterName.trim()} (Renter)`
+                                  : displayOwnerName(row.ownerName)}
                           </div>
                           <div className="mt-0.5 text-[11px] text-slate-400">Flat {row.flatNumber}</div>
                         </div>

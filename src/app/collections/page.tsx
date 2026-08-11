@@ -80,39 +80,47 @@ function buildCollectOptions(
   pending: PurposePendingFlat[],
   flats: FlatRecord[]
 ): CollectPersonOption[] {
-  const pendingIds = new Set(pending.map((p) => p.flatId));
   const byId = new Map(flats.map((f) => [f.id, f]));
+  const byNumber = new Map(flats.map((f) => [String(f.flatNumber), f]));
   const options: CollectPersonOption[] = [];
 
   for (const pendingFlat of pending) {
-    if (!pendingIds.has(pendingFlat.flatId)) continue;
-    const flat = byId.get(pendingFlat.flatId);
-    if (!flat) continue;
-    if (flat.status !== "sold" && flat.status !== "rent") continue;
+    const flat =
+      byId.get(pendingFlat.flatId) ||
+      byNumber.get(String(pendingFlat.flatNumber));
 
-    const ownerName = (flat.ownerName || pendingFlat.ownerName || "").trim();
-    const renterName = (flat.renterName || "").trim();
+    const status = String(flat?.status || pendingFlat.flatStatus || "");
+    if (status === "available") continue;
+    if (status && status !== "sold" && status !== "rent") continue;
+
+    const flatId = flat?.id || pendingFlat.flatId;
+    const flatNumber = flat?.flatNumber || pendingFlat.flatNumber;
+    const floorNumber = flat?.floorNumber ?? pendingFlat.floorNumber;
+
+    const ownerName = (flat?.ownerName || pendingFlat.ownerName || "").trim();
+    // Active/current renter from flats module (or purpose-details payload)
+    const renterName = (flat?.renterName || pendingFlat.renterName || "").trim();
 
     if (ownerName) {
       options.push({
-        key: `${flat.id}:owner`,
-        flatId: flat.id,
-        flatNumber: flat.flatNumber,
-        floorNumber: flat.floorNumber,
+        key: `${flatId}:owner`,
+        flatId,
+        flatNumber,
+        floorNumber,
         name: ownerName,
         ownerType: "Owner",
-        label: `${flat.flatNumber} - ${ownerName} (Owner)`,
+        label: `${flatNumber} - ${ownerName} (Owner)`,
       });
     }
     if (renterName) {
       options.push({
-        key: `${flat.id}:renter`,
-        flatId: flat.id,
-        flatNumber: flat.flatNumber,
-        floorNumber: flat.floorNumber,
+        key: `${flatId}:renter`,
+        flatId,
+        flatNumber,
+        floorNumber,
         name: renterName,
         ownerType: "Renter",
-        label: `${flat.flatNumber} - ${renterName} (Renter)`,
+        label: `${flatNumber} - ${renterName} (Renter)`,
       });
     }
   }
@@ -356,13 +364,18 @@ export default function CollectionsPage() {
       setFormSelectedKeys([]);
       return;
     }
-    const cached = peekCache<PurposeDetails>(CacheKeys.purposeDetails(purposeIdValue));
-    if (!cached) setFormPendingLoading(true);
+    if (!peekCache<PurposeDetails>(CacheKeys.purposeDetails(purposeIdValue))) {
+      setFormPendingLoading(true);
+    }
     try {
-      const details = cached ?? (await readPurposeDetails(purposeIdValue));
-      const collectable = details.pending.filter(
-        (f) => f.hasOwner && f.flatStatus !== "available"
-      );
+      // Force refresh so renter-only flats are not missed from a stale bootstrap cache
+      const details = await readPurposeDetails(purposeIdValue, { force: true });
+      const collectable = details.pending.filter((f) => {
+        if (f.flatStatus === "available") return false;
+        const hasOwner = f.hasOwner || !!(f.ownerName || "").trim();
+        const hasRenter = !!(f.renterName || "").trim();
+        return hasOwner || hasRenter;
+      });
       const unsold = details.unsoldPending || [];
       setFormPendingFlats(collectable);
       setFormUnsoldPending(unsold);

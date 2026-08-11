@@ -11,14 +11,16 @@ import {
   type NoticeRecord,
 } from "@/lib/notices-api";
 import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
+import { CacheKeys, peekCache } from "@/lib/data-cache";
 import NoticeCard from "@/components/NoticeCard";
 import NoticeModal from "@/components/notices/NoticeModal";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 export default function NoticesPage() {
   const [q, setQ] = useState("");
-  const [notices, setNotices] = useState<NoticeRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCached = peekCache<NoticeRecord[]>(CacheKeys.notices("", 0));
+  const [notices, setNotices] = useState<NoticeRecord[]>(initialCached ?? []);
+  const [loading, setLoading] = useState(!initialCached);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -42,12 +44,24 @@ export default function NoticesPage() {
       .catch(() => setUser(null));
   }, []);
 
-  const load = useCallback(async (opts?: { silent?: boolean }) => {
+  const load = useCallback(async (opts?: { silent?: boolean; force?: boolean }) => {
     const silent = !!opts?.silent;
+    const force = !!opts?.force;
+    const qTrim = q.trim();
+    const limit = 0;
+    if (!force) {
+      const cached = peekCache<NoticeRecord[]>(CacheKeys.notices(qTrim, limit));
+      if (cached) {
+        setNotices(cached);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+    }
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const list = await readNotices({ q });
+      const list = await readNotices({ q: qTrim, force });
       setNotices(list);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load notices");
@@ -58,16 +72,20 @@ export default function NoticesPage() {
   }, [q]);
 
   useEffect(() => {
+    if (peekCache(CacheKeys.notices(q.trim(), 0))) {
+      void load();
+      return;
+    }
     const t = window.setTimeout(() => {
       void load();
     }, 200);
     return () => window.clearTimeout(t);
-  }, [load]);
+  }, [load, q]);
 
   useEffect(() => {
     return subscribeDataChanged((source) => {
       if (source === "notice" || source === "unknown") {
-        void load({ silent: true });
+        void load({ silent: true, force: true });
       }
     });
   }, [load]);
@@ -102,11 +120,13 @@ export default function NoticesPage() {
       } else {
         await createNotice(data);
         flashSuccess("Notice added");
-        await load({ silent: true });
       }
       setModalOpen(false);
       setEditing(null);
       notifyDataChanged("notice");
+      if (modalMode !== "edit") {
+        await load({ silent: true, force: true });
+      }
     } catch (err) {
       setModalError(err instanceof Error ? err.message : "Unable to save notice");
     } finally {

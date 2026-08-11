@@ -12,9 +12,16 @@ import {
   type UserNotification,
 } from "@/lib/notifications-api";
 import { subscribeDataChanged, notifyDataChanged } from "@/lib/data-sync";
+import { CacheKeys, peekCache } from "@/lib/data-cache";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 type StatusFilter = "all" | "unread" | "read";
+
+type NotificationsCachePayload = {
+  notifications: UserNotification[];
+  unreadCount: number;
+  authenticated: boolean;
+};
 
 function formatWhen(iso: string) {
   if (!iso) return "";
@@ -32,11 +39,18 @@ function formatWhen(iso: string) {
 export default function NotificationsPage() {
   const router = useRouter();
   const [status, setStatus] = useState<StatusFilter>("all");
-  const [items, setItems] = useState<UserNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [authenticated, setAuthenticated] = useState(false);
+  const initialCached = peekCache<NotificationsCachePayload>(
+    CacheKeys.notifications("all", 100)
+  );
+  const [items, setItems] = useState<UserNotification[]>(
+    initialCached?.notifications ?? []
+  );
+  const [unreadCount, setUnreadCount] = useState(initialCached?.unreadCount ?? 0);
+  const [authenticated, setAuthenticated] = useState(
+    initialCached?.authenticated ?? false
+  );
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialCached);
   const [error, setError] = useState<string | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<UserNotification | null>(null);
@@ -49,10 +63,28 @@ export default function NotificationsPage() {
       .catch(() => setIsSuperAdmin(false));
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { force?: boolean }) => {
+    const force = !!opts?.force;
+    if (!force) {
+      const cached = peekCache<NotificationsCachePayload>(
+        CacheKeys.notifications(status, 100)
+      );
+      if (cached) {
+        setAuthenticated(cached.authenticated);
+        setItems(cached.notifications);
+        setUnreadCount(cached.unreadCount);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+    }
     setError(null);
     try {
-      const data = await readNotificationsForEveryone({ limit: 100, status });
+      const data = await readNotificationsForEveryone({
+        limit: 100,
+        status,
+        force,
+      });
       setAuthenticated(data.authenticated);
       setItems(data.notifications);
       setUnreadCount(data.unreadCount);
@@ -64,13 +96,18 @@ export default function NotificationsPage() {
   }, [status]);
 
   useEffect(() => {
+    if (peekCache(CacheKeys.notifications(status, 100))) {
+      setLoading(false);
+      void load();
+      return;
+    }
     setLoading(true);
     void load();
-  }, [load]);
+  }, [load, status]);
 
   useEffect(() => {
     return subscribeDataChanged(() => {
-      void load();
+      void load({ force: true });
     });
   }, [load]);
 

@@ -59,6 +59,8 @@ export interface PurposePendingFlat {
   floorNumber: number;
   ownerName: string;
   ownerMobile: string;
+  /** Current renter from flats module (empty when none). */
+  renterName: string;
   hasOwner: boolean;
   pendingAmount: number;
   flatStatus?: string;
@@ -225,6 +227,7 @@ export async function readPurposeDetails(
           floorNumber: Number(row.floorNumber) || 0,
           ownerName,
           ownerMobile: String(row.ownerMobile ?? ""),
+          renterName: String(row.renterName ?? "").trim(),
           hasOwner,
           pendingAmount: Number(row.pendingAmount) || 0,
           flatStatus: row.flatStatus ? String(row.flatStatus) : undefined,

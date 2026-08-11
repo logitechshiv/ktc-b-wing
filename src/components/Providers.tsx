@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { RoleProvider } from "@/context/RoleContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import DataBootstrapProvider from "@/components/DataBootstrapProvider";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -17,7 +18,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider>
-      <RoleProvider>{children}</RoleProvider>
+      <RoleProvider>
+        <DataBootstrapProvider>{children}</DataBootstrapProvider>
+      </RoleProvider>
     </ThemeProvider>
   );
 }

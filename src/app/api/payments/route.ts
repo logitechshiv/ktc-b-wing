@@ -78,9 +78,13 @@ export async function POST(request: Request) {
     }
 
     const hasOwner = !!String(flat.ownerName || "").trim();
-    if (!hasOwner) {
+    const hasRenter = !!String(flat.renterName || "").trim();
+    if (!hasOwner && !hasRenter) {
       return NextResponse.json(
-        { success: false, message: "Cannot collect payment — this flat has no owner" },
+        {
+          success: false,
+          message: "Cannot collect payment — this flat has no owner or renter",
+        },
         { status: 400 }
       );
     }

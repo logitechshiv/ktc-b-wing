@@ -42,18 +42,24 @@ async function parseJson(res: Response) {
   return data;
 }
 
-export async function readNotices(params: { q?: string; limit?: number } = {}): Promise<NoticeRecord[]> {
+export async function readNotices(
+  params: { q?: string; limit?: number; force?: boolean } = {}
+): Promise<NoticeRecord[]> {
   const q = params.q?.trim() || "";
   const limit = params.limit && params.limit > 0 ? params.limit : 0;
-  return cachedQuery(CacheKeys.notices(q, limit), async () => {
-    const sp = new URLSearchParams();
-    if (q) sp.set("q", q);
-    if (limit > 0) sp.set("limit", String(limit));
-    const qs = sp.toString();
-    const res = await fetch(`/api/notices${qs ? `?${qs}` : ""}`, { cache: "no-store" });
-    const data = await parseJson(res);
-    return ((data.notices as Record<string, unknown>[]) || []).map(toNotice);
-  });
+  return cachedQuery(
+    CacheKeys.notices(q, limit),
+    async () => {
+      const sp = new URLSearchParams();
+      if (q) sp.set("q", q);
+      if (limit > 0) sp.set("limit", String(limit));
+      const qs = sp.toString();
+      const res = await fetch(`/api/notices${qs ? `?${qs}` : ""}`, { cache: "no-store" });
+      const data = await parseJson(res);
+      return ((data.notices as Record<string, unknown>[]) || []).map(toNotice);
+    },
+    { force: params.force }
+  );
 }
 
 export async function createNotice(input: NoticeInput): Promise<NoticeRecord> {

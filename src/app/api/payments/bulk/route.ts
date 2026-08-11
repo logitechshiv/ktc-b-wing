@@ -123,7 +123,9 @@ export async function POST(request: Request) {
           ? String(flat.renterName || "").trim()
           : String(flat.ownerName || "").trim());
 
-      if (!payerName && !String(flat.ownerName || "").trim()) {
+      const hasOwner = !!String(flat.ownerName || "").trim();
+      const hasRenter = !!String(flat.renterName || "").trim();
+      if (!payerName || (!hasOwner && !hasRenter)) {
         skippedExisting += 1;
         continue;
       }

@@ -13,22 +13,30 @@ export async function countTotalFlats(): Promise<number> {
   return Flat.countDocuments({});
 }
 
-/** Flats that can pay for sold-only purposes: sold/rent + non-empty owner name. */
+/** Mongo filter: sold/rent flat with an owner and/or current renter. */
+const PAYABLE_FLAT_FILTER = {
+  status: { $in: ["sold", "rent"] },
+  $or: [
+    { ownerName: { $exists: true, $nin: [null, ""] } },
+    { renterName: { $exists: true, $nin: [null, ""] } },
+  ],
+};
+
+/** Flats that can pay for sold-only purposes: sold/rent + owner and/or renter. */
 export async function countPayableFlats(): Promise<number> {
-  return Flat.countDocuments({
-    status: { $in: ["sold", "rent"] },
-    ownerName: { $exists: true, $nin: [null, ""] },
-  });
+  return Flat.countDocuments(PAYABLE_FLAT_FILTER);
 }
 
 function isSoldCollectableFlat(flat: {
   status?: string | null;
   ownerName?: string | null;
+  renterName?: string | null;
 }): boolean {
   const status = String(flat.status || "");
   const isSold = status === "sold" || status === "rent";
   const hasOwner = !!(flat.ownerName || "").trim();
-  return isSold && hasOwner;
+  const hasRenter = !!(flat.renterName || "").trim();
+  return isSold && (hasOwner || hasRenter);
 }
 
 function isUnsoldFlat(flat: { status?: string | null }): boolean {
@@ -56,12 +64,7 @@ export async function getPurposeProgressStats(
 
   const [totalFlats, payableFlatDocs] = await Promise.all([
     countTotalFlats(),
-    Flat.find({
-      status: { $in: ["sold", "rent"] },
-      ownerName: { $exists: true, $nin: [null, ""] },
-    })
-      .select("flatNumber")
-      .lean(),
+    Flat.find(PAYABLE_FLAT_FILTER).select("flatNumber").lean(),
   ]);
 
   const payableFlatNumbers = new Set(payableFlatDocs.map((f) => String(f.flatNumber)));
@@ -159,6 +162,8 @@ export interface PurposeDetailsResult {
     floorNumber: number;
     ownerName: string;
     ownerMobile: string;
+    /** Current renter name from flats (empty when none). */
+    renterName: string;
     hasOwner: boolean;
     pendingAmount: number;
     /** available = unsold (builder); sold/rent = owner-collectable */
@@ -245,6 +250,10 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
       continue;
     }
 
+    const renterName = String(
+      (flat as { renterName?: string | null }).renterName || ""
+    ).trim();
+
     if (isUnsold) {
       // Only when scope = all
       unsoldPending.push({
@@ -259,6 +268,7 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
         floorNumber: flat.floorNumber,
         ownerName: "",
         ownerMobile: "",
+        renterName: "",
         hasOwner: false,
         pendingAmount: amountPerFlat,
         flatStatus: "available",
@@ -272,7 +282,8 @@ export async function getPurposeDetails(purposeId: string): Promise<PurposeDetai
       floorNumber: flat.floorNumber,
       ownerName,
       ownerMobile,
-      hasOwner: true,
+      renterName,
+      hasOwner,
       pendingAmount: amountPerFlat,
       flatStatus: flat.status,
     });

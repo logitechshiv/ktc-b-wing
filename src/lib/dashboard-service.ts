@@ -83,10 +83,13 @@ function modeTotal(
 }
 
 /**
- * Payments that count as actually received for dashboard Collected:
- * - Always exclude flats with no payment row (pending/unpaid are not in `payments`).
- * - For sold-only purposes, also exclude payments on non-payable flats
- *   (unsold / no owner) so Collected matches paid-flat totals, not target totals.
+ * Payments that count as actually received for dashboard Collected / By Payment Mode.
+ * Source of truth = `payments` collection rows only (never flats × amountPerFlat).
+ *
+ * Aligns with Collections payable flats:
+ * - collectionScope "all" → every received payment for that purpose
+ * - sold-scope → payment on a sold/rent flat that has an owner and/or renter
+ * Pending/unpaid flats have no payment row, so they are never included.
  */
 const RECEIVED_PAYMENT_PIPELINE = [
   {
@@ -116,13 +119,29 @@ const RECEIVED_PAYMENT_PIPELINE = [
             $and: [
               { $in: ["$flat.status", ["sold", "rent"]] },
               {
-                $gt: [
+                $or: [
                   {
-                    $strLenCP: {
-                      $trim: { input: { $ifNull: ["$flat.ownerName", ""] } },
-                    },
+                    $gt: [
+                      {
+                        $strLenCP: {
+                          $trim: { input: { $ifNull: ["$flat.ownerName", ""] } },
+                        },
+                      },
+                      0,
+                    ],
                   },
-                  0,
+                  {
+                    $gt: [
+                      {
+                        $strLenCP: {
+                          $trim: {
+                            input: { $ifNull: ["$flat.renterName", ""] },
+                          },
+                        },
+                      },
+                      0,
+                    ],
+                  },
                 ],
               },
             ],
