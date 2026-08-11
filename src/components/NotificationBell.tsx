@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import {
-  guestMarkRead,
   markAllNotificationsRead,
   markNotificationRead,
-  resolveNotificationRoute,
   readNotificationsForEveryone,
   type UserNotification,
 } from "@/lib/notifications-api";
@@ -25,15 +24,8 @@ function formatWhen(iso: string) {
   });
 }
 
-function moduleDestination(n: UserNotification): string {
-  const href = resolveNotificationRoute(n);
-  if (!href || href === "/notifications" || href.startsWith("/notifications/")) {
-    return "/";
-  }
-  return href;
-}
-
 export default function NotificationBell() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -42,7 +34,6 @@ export default function NotificationBell() {
   const [markingAll, setMarkingAll] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const fetchingRef = useRef(false);
-  const navigatingRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (fetchingRef.current) return;
@@ -101,49 +92,32 @@ export default function NotificationBell() {
     };
   }, []);
 
-  function markReadInBackground(n: UserNotification) {
-    if (n.isRead) return;
-    if (!authenticated) {
-      guestMarkRead(n.id);
-      return;
+  /** Click any notification card → /notifications (same as View All). */
+  function handleItemClick(n: UserNotification) {
+    setOpen(false);
+
+    if (!n.isRead) {
+      setUnreadCount((c) => Math.max(0, c - 1));
+      setItems((prev) =>
+        prev.map((row) =>
+          row.id === n.id
+            ? { ...row, isRead: true, readAt: new Date().toISOString() }
+            : row
+        )
+      );
+      void markNotificationRead(n.id, authenticated)
+        .then((result) => setUnreadCount(result.unreadCount))
+        .catch(() => {
+          /* still navigate */
+        });
     }
-    // keepalive so mark-read survives the hard navigation
-    try {
-      void fetch(`/api/notifications/${encodeURIComponent(n.id)}/read`, {
-        method: "PATCH",
-        credentials: "same-origin",
-        keepalive: true,
-        cache: "no-store",
-      });
-    } catch {
-      void markNotificationRead(n.id, authenticated).catch(() => {});
-    }
+
+    router.push("/notifications");
   }
 
-  /**
-   * Middle notification card → related module root (e.g. /flats).
-   * NEVER /notifications — that is View All only.
-   * Navigate synchronously on pointerdown before any React unmount.
-   */
-  function openRelatedRoot(e: PointerEvent<HTMLButtonElement>, n: UserNotification) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (navigatingRef.current) return;
-    navigatingRef.current = true;
-
-    const destination = moduleDestination(n);
-    markReadInBackground(n);
+  function handleViewAll() {
     setOpen(false);
-    window.location.href = destination;
-  }
-
-  function openNotificationsInbox(e: PointerEvent<HTMLButtonElement>) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setOpen(false);
-    window.location.href = "/notifications";
+    router.push("/notifications");
   }
 
   async function handleMarkAll() {
@@ -215,28 +189,19 @@ export default function NotificationBell() {
                 </button>
               </div>
 
-              {/* Entire middle region is the notification target — not View All */}
-              <ul className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-                {unreadItems.map((n, index) => (
-                  <li
-                    key={n.id}
-                    className={
-                      unreadItems.length === 1 ? "flex min-h-[7rem] flex-1 flex-col" : undefined
-                    }
-                  >
+              <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                {unreadItems.map((n) => (
+                  <li key={n.id}>
                     <button
                       type="button"
-                      data-notification-id={n.id}
-                      data-target-route={moduleDestination(n)}
-                      onPointerDown={(e) => openRelatedRoot(e, n)}
-                      className={
-                        "relative z-10 flex w-full gap-2.5 border-b border-slate-50 bg-brand/[0.04] px-3.5 py-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60 " +
-                        (unreadItems.length === 1 ? "flex-1 items-start" : "") +
-                        (index === unreadItems.length - 1 ? " border-b-0" : "")
-                      }
+                      onClick={() => handleItemClick(n)}
+                      className="flex w-full cursor-pointer gap-2.5 border-b border-slate-50 bg-brand/[0.04] px-3.5 py-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60"
                     >
-                      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden />
-                      <span className="min-w-0 flex-1 overflow-hidden">
+                      <span
+                        className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand pointer-events-none"
+                        aria-hidden
+                      />
+                      <span className="pointer-events-none min-w-0 flex-1 overflow-hidden">
                         <span className="block break-words text-[12px] font-bold text-navy dark:text-slate-100">
                           {n.title}
                         </span>
@@ -252,11 +217,11 @@ export default function NotificationBell() {
                 ))}
               </ul>
 
-              <div className="relative z-0 shrink-0 border-t border-slate-100 px-3.5 py-2.5 dark:border-slate-700">
+              <div className="shrink-0 border-t border-slate-100 px-3.5 py-2.5 dark:border-slate-700">
                 <button
                   type="button"
-                  onPointerDown={openNotificationsInbox}
-                  className="block w-full text-center text-[12px] font-semibold text-brand hover:underline"
+                  onClick={handleViewAll}
+                  className="block w-full cursor-pointer text-center text-[12px] font-semibold text-brand hover:underline"
                 >
                   View All
                 </button>
