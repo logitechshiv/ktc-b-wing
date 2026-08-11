@@ -15,7 +15,7 @@ export async function countTotalFlats(): Promise<number> {
 
 /** Mongo filter: sold/rent flat with an owner and/or current renter. */
 const PAYABLE_FLAT_FILTER = {
-  status: { $in: ["sold", "rent"] },
+  status: { $in: ["sold", "rent"] as ("sold" | "rent")[] },
   $or: [
     { ownerName: { $exists: true, $nin: [null, ""] } },
     { renterName: { $exists: true, $nin: [null, ""] } },
