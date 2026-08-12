@@ -1,3 +1,4 @@
+import type { PipelineStage } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import Payment from "@/models/Payment";
 import Expense from "@/models/Expense";
@@ -91,7 +92,7 @@ function modeTotal(
  * - sold-scope → payment on a sold/rent flat that has an owner and/or renter
  * Pending/unpaid flats have no payment row, so they are never included.
  */
-const RECEIVED_PAYMENT_PIPELINE = [
+const RECEIVED_PAYMENT_PIPELINE: PipelineStage[] = [
   {
     $lookup: {
       from: "payment_purposes",
@@ -162,7 +163,7 @@ const RECEIVED_PAYMENT_PIPELINE = [
       total: { $sum: "$amount" },
     },
   },
-] as const;
+];
 
 /**
  * Aggregated dashboard stats from payments, expenses, flats, vehicles.
