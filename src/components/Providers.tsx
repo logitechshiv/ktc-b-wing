@@ -3,6 +3,11 @@ import { useEffect } from "react";
 import { RoleProvider } from "@/context/RoleContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import DataBootstrapProvider from "@/components/DataBootstrapProvider";
+import { initPwaInstallCapture } from "@/lib/pwa-install";
+
+if (typeof window !== "undefined") {
+  initPwaInstallCapture();
+}
 
 function registerServiceWorker() {
   if (typeof window === "undefined") return;
@@ -26,6 +31,7 @@ function registerServiceWorker() {
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
+    initPwaInstallCapture();
     registerServiceWorker();
   }, []);
 

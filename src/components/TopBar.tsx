@@ -4,6 +4,7 @@ import Chevron from "./Chevron";
 import AdminButton from "./AdminButton";
 import ThemeToggle from "./ThemeToggle";
 import NotificationBell from "./NotificationBell";
+import InstallAppButton from "./InstallAppButton";
 
 export default function TopBar() {
   return (
@@ -23,8 +24,9 @@ export default function TopBar() {
               </div>
             </div>
           </Link>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <NotificationBell />
+            <InstallAppButton />
             <ThemeToggle />
             <AdminButton />
           </div>
