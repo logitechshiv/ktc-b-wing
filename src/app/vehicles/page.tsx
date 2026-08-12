@@ -459,24 +459,24 @@ export default function VehiclesPage() {
                       <button
                         type="button"
                         onClick={() => copyText("plate-" + v.id, v.vehicleNumber)}
-                        className="w-full text-left"
+                        className="w-full min-w-0 text-left"
                         title="Copy vehicle number"
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold tabular-nums tracking-wide text-brand">
-                            {v.vehicleNumber ? formatPlate(v.vehicleNumber) : "No number"}
-                          </span>
-                          <span
-                            className={
-                              "shrink-0 text-[11px] font-medium " +
-                              (v.stickerIssued ? "text-emerald-600" : "text-amber-600")
-                            }
-                          >
-                            સ્ટીકર: {v.stickerIssued ? "Yes" : "No"}
-                          </span>
+                        <div className="min-w-0 break-words font-semibold tabular-nums tracking-wide text-brand">
+                          {v.vehicleNumber ? formatPlate(v.vehicleNumber) : "No number"}
+                        </div>
+                        <div
+                          className={
+                            "mt-0.5 text-[11px] font-medium " +
+                            (v.stickerIssued ? "text-emerald-600" : "text-amber-600")
+                          }
+                        >
+                          સ્ટીકર: {v.stickerIssued ? "Yes" : "No"}
                         </div>
                         {copied === "plate-" + v.id && (
-                          <div className="text-[10px] font-medium text-emerald-600">Number copied</div>
+                          <div className="text-[10px] font-medium text-emerald-600">
+                            Number copied
+                          </div>
                         )}
                       </button>
                       {v.notes?.trim() ? (
@@ -486,7 +486,7 @@ export default function VehiclesPage() {
                       ) : null}
                     </div>
                     {isSuperAdmin && (
-                      <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
+                      <div className="flex shrink-0  gap-1 sm:flex-row">
                         <button
                           type="button"
                           onClick={() => openEdit(v)}

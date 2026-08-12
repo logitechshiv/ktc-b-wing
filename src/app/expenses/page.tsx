@@ -16,20 +16,19 @@ import {
   updateExpense,
   updateExpenseCategory,
   type ExpenseCategoryRecord,
-  type ExpenseCategoryRole,
   type ExpenseInput,
   type ExpenseRecord,
 } from "@/lib/expenses-api";
 import {
-  EXPENSE_CATEGORY_ROLE_OPTIONS,
   expenseCategoryRoleLabel,
-  parseExpenseCategoryRole,
 } from "@/lib/expense-category-role";
-import { formSelect } from "@/lib/form-styles";
 import { CacheKeys, peekCache } from "@/lib/data-cache";
 import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
 import ExpenseRow from "@/components/ExpenseRow";
 import ExpenseModal from "@/components/expenses/ExpenseModal";
+import CategoryModal, {
+  type CategoryModalInput,
+} from "@/components/expenses/CategoryModal";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 type ExpensesCachePayload = {
@@ -107,14 +106,13 @@ export default function ExpensesPage() {
   const [deletingCategory, setDeletingCategory] = useState(false);
   const [deleteCategoryError, setDeleteCategoryError] = useState<string | null>(null);
 
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryIncludeCommon, setNewCategoryIncludeCommon] = useState(false);
-  const [newCategoryRole, setNewCategoryRole] = useState<ExpenseCategoryRole>("normal");
-  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
-  const [editingCategoryName, setEditingCategoryName] = useState("");
-  const [editingCategoryIncludeCommon, setEditingCategoryIncludeCommon] = useState(false);
-  const [editingCategoryRole, setEditingCategoryRole] = useState<ExpenseCategoryRole>("normal");
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [categoryModalMode, setCategoryModalMode] = useState<"add" | "edit">("add");
+  const [editingCategory, setEditingCategory] = useState<ExpenseCategoryRecord | null>(null);
   const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryModalError, setCategoryModalError] = useState<string | null>(null);
+  const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
 
   const filtersActive = q.trim() !== "" || category !== "all";
   /** List order is fixed by createdAt DESC (newest first) — drag reorder disabled. */
@@ -281,70 +279,73 @@ export default function ExpensesPage() {
     }
   }
 
-  async function handleAddCategory() {
-    if (editingCategoryId) {
-      setError("Finish or cancel category edit before adding a new one");
-      return;
-    }
-    const name = newCategoryName.trim();
-    if (!name) return;
+  async function handleCategorySubmit(data: CategoryModalInput) {
     setCategorySaving(true);
+    setCategoryModalError(null);
     setError(null);
     try {
-      await createExpenseCategory(name, newCategoryIncludeCommon, newCategoryRole);
-      setNewCategoryName("");
-      setNewCategoryIncludeCommon(false);
-      setNewCategoryRole("normal");
-      setSuccess("Category added");
-      notifyDataChanged("expense");
-      await loadCategories({ force: true });
+      if (categoryModalMode === "edit") {
+        const id = editingCategory?.id?.trim();
+        if (!id) {
+          setCategoryModalError("No category selected for edit");
+          return;
+        }
+        const updated = await updateExpenseCategory(
+          id,
+          data.name,
+          data.includeInCommonExpense,
+          data.role
+        );
+        setManagedCategories((list) => list.map((c) => (c.id === updated.id ? updated : c)));
+        setCategoryModalOpen(false);
+        setCategoryModalMode("add");
+        setEditingCategory(null);
+        setSuccess("Category updated");
+        notifyDataChanged("expense");
+        await loadCategories({ force: true });
+        await load({ force: true });
+      } else {
+        await createExpenseCategory(data.name, data.includeInCommonExpense, data.role);
+        setCategoryModalOpen(false);
+        setCategoryModalMode("add");
+        setEditingCategory(null);
+        setSuccess("Category added");
+        notifyDataChanged("expense");
+        await loadCategories({ force: true });
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to add category");
-    } finally {
-      setCategorySaving(false);
-    }
-  }
-
-  async function handleSaveCategory() {
-    const id = editingCategoryId?.trim();
-    if (!id) {
-      setError("No category selected for edit");
-      return;
-    }
-    const name = editingCategoryName.trim();
-    if (!name) return;
-    setCategorySaving(true);
-    setError(null);
-    try {
-      const updated = await updateExpenseCategory(
-        id,
-        name,
-        editingCategoryIncludeCommon,
-        editingCategoryRole
+      setCategoryModalError(
+        err instanceof Error
+          ? err.message
+          : categoryModalMode === "edit"
+            ? "Unable to update category"
+            : "Unable to add category"
       );
-      // Update in place by id — never append a duplicate row
-      setManagedCategories((list) => list.map((c) => (c.id === updated.id ? updated : c)));
-      cancelCategoryEdit();
-      setSuccess("Category updated");
-      notifyDataChanged("expense");
-      await loadCategories({ force: true });
-      await load({ force: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update category");
     } finally {
       setCategorySaving(false);
     }
   }
 
-  function cancelCategoryEdit() {
-    setEditingCategoryId(null);
-    setEditingCategoryName("");
-    setEditingCategoryIncludeCommon(false);
-    setEditingCategoryRole("normal");
-    setNewCategoryName("");
-    setNewCategoryIncludeCommon(false);
-    setNewCategoryRole("normal");
-    setError(null);
+  function closeCategoryModal() {
+    if (categorySaving) return;
+    setCategoryModalOpen(false);
+    setCategoryModalMode("add");
+    setEditingCategory(null);
+    setCategoryModalError(null);
+  }
+
+  function openAddCategory() {
+    setCategoryModalMode("add");
+    setEditingCategory(null);
+    setCategoryModalError(null);
+    setCategoryModalOpen(true);
+  }
+
+  function openEditCategory(c: ExpenseCategoryRecord) {
+    setCategoryModalMode("edit");
+    setEditingCategory(c);
+    setCategoryModalError(null);
+    setCategoryModalOpen(true);
   }
 
   async function handleDeleteCategory() {
@@ -355,8 +356,11 @@ export default function ExpensesPage() {
     setError(null);
     try {
       await deleteExpenseCategory(id);
-      if (editingCategoryId === id) {
-        cancelCategoryEdit();
+      if (editingCategory?.id === id) {
+        closeCategoryModal();
+      }
+      if (expandedCategoryId === id) {
+        setExpandedCategoryId(null);
       }
       setDeleteCategoryTarget(null);
       setSuccess("Category deleted");
@@ -443,7 +447,35 @@ export default function ExpensesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-end justify-between gap-3">
+      {/* Mobile header */}
+      <div className="space-y-2.5 sm:hidden">
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="min-w-0 text-lg font-bold text-navy">Expenses</h1>
+          <div className="shrink-0 text-right">
+            <div className="text-[10px] uppercase tracking-wide text-slate-400">કુલ ખર્ચ</div>
+            <div className="text-base font-bold tabular-nums text-rose-500">
+              {inr(displayTotal)}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-end justify-between gap-3">
+          <p className="min-w-0 flex-1 text-xs leading-snug text-slate-500">
+            Category · name · share to WhatsApp group
+          </p>
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={openAdd}
+              className="shrink-0 rounded-xl bg-black px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-900"
+            >
+              + Add Expense
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tablet / desktop header — unchanged */}
+      <div className="hidden items-end justify-between gap-3 sm:flex">
         <div>
           <h1 className="text-lg font-bold text-navy">Expenses</h1>
           <p className="mt-0.5 text-xs text-slate-500">Category · name · share to WhatsApp group</p>
@@ -492,188 +524,133 @@ export default function ExpensesPage() {
 
       {isSuperAdmin && (
         <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Manage Categories
-          </div>
-          <div className="space-y-3 p-4">
-            <div className="space-y-2">
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      if (!editingCategoryId) void handleAddCategory();
-                    }
-                  }}
-                  placeholder="New category name"
-                  disabled={!!editingCategoryId || categorySaving}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
-                />
+          <button
+            type="button"
+            onClick={() => setManageCategoriesOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+            aria-expanded={manageCategoriesOpen}
+          >
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Manage Categories
+            </span>
+            <span
+              className={
+                "shrink-0 text-slate-400 transition " +
+                (manageCategoriesOpen ? "rotate-180" : "")
+              }
+              aria-hidden
+            >
+              ▾
+            </span>
+          </button>
+
+          {manageCategoriesOpen && (
+            <div className="space-y-3 border-t border-slate-100 px-4 py-4">
+              <div className="flex justify-end">
                 <button
                   type="button"
-                  disabled={
-                    !!editingCategoryId || categorySaving || !newCategoryName.trim()
-                  }
-                  onClick={() => void handleAddCategory()}
-                  className="shrink-0 rounded-xl bg-black px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+                  onClick={openAddCategory}
+                  className="shrink-0 rounded-xl bg-black px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-900"
                 >
                   + Add Category
                 </button>
               </div>
-              <label className="block text-xs font-semibold text-slate-600">
-                Role
-                <select
-                  value={newCategoryRole}
-                  onChange={(e) =>
-                    setNewCategoryRole(parseExpenseCategoryRole(e.target.value, "normal"))
-                  }
-                  disabled={!!editingCategoryId || categorySaving}
-                  className={formSelect + " disabled:bg-slate-50 disabled:opacity-60"}
-                >
-                  {EXPENSE_CATEGORY_ROLE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={newCategoryIncludeCommon}
-                  onChange={(e) => setNewCategoryIncludeCommon(e.target.checked)}
-                  disabled={!!editingCategoryId || categorySaving}
-                  className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand disabled:opacity-50"
-                />
-                Include in Common Expense
-              </label>
-              {editingCategoryId ? (
-                <p className="text-[11px] text-amber-600">
-                  Editing a category — Save or Cancel below before adding a new one.
-                </p>
-              ) : null}
-            </div>
-            <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-100">
-              {managedCategories.map((c) => (
-                <li key={c.id} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center">
-                  {editingCategoryId === c.id ? (
-                    <>
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <input
-                          value={editingCategoryName}
-                          onChange={(e) => setEditingCategoryName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void handleSaveCategory();
+
+              {managedCategories.map((c) => {
+                const isOpen = expandedCategoryId === c.id;
+                return (
+                  <section
+                    key={c.id}
+                    className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm"
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedCategoryId((cur) => (cur === c.id ? null : c.id))
+                      }
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                      aria-expanded={isOpen}
+                    >
+                      <span className="min-w-0 truncate text-sm font-bold text-navy">
+                        {c.name}
+                      </span>
+                      <span
+                        className={
+                          "shrink-0 text-slate-400 transition " +
+                          (isOpen ? "rotate-180" : "")
+                        }
+                        aria-hidden
+                      >
+                        ▾
+                      </span>
+                    </button>
+
+                    {isOpen && (
+                      <div className="space-y-3 border-t border-slate-100 px-4 py-4">
+                        <div className="min-w-0 space-y-1">
+                          <div className="text-[11px] font-medium text-slate-400">
+                            Category Name
+                          </div>
+                          <div className="break-words text-sm font-semibold text-navy">
+                            {c.name}
+                          </div>
+                        </div>
+                        <div className="min-w-0 space-y-1">
+                          <div className="text-[11px] font-medium text-slate-400">Role</div>
+                          <div className="text-sm font-medium text-slate-700">
+                            {expenseCategoryRoleLabel(c.role || "normal")}
+                          </div>
+                        </div>
+                        <div className="min-w-0 space-y-1">
+                          <div className="text-[11px] font-medium text-slate-400">
+                            Include in Common Expense
+                          </div>
+                          <div
+                            className={
+                              "text-sm font-medium " +
+                              (c.includeInCommonExpense
+                                ? "text-emerald-600"
+                                : "text-slate-400")
                             }
-                          }}
-                          className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-brand"
-                        />
-                        <label className="block text-[11px] font-semibold text-slate-600">
-                          Role
-                          <select
-                            value={editingCategoryRole}
-                            onChange={(e) =>
-                              setEditingCategoryRole(
-                                parseExpenseCategoryRole(e.target.value, "normal")
-                              )
-                            }
-                            className={formSelect}
                           >
-                            {EXPENSE_CATEGORY_ROLE_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex cursor-pointer items-center gap-2 text-[11px] font-medium text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={editingCategoryIncludeCommon}
-                            onChange={(e) => setEditingCategoryIncludeCommon(e.target.checked)}
-                            className="h-3.5 w-3.5 rounded border-slate-300 text-brand focus:ring-brand"
-                          />
-                          Include in Common Expense
-                        </label>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={categorySaving}
-                          onClick={() => void handleSaveCategory()}
-                          className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand"
-                        >
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelCategoryEdit}
-                          className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-500"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold text-navy">{c.name}</div>
-                        <div className="mt-0.5 text-[11px] font-medium text-slate-500">
-                          Role: {expenseCategoryRoleLabel(c.role || "normal")}
+                            {c.includeInCommonExpense
+                              ? "✓ Included in Common Expense"
+                              : "✕ Excluded from Common Expense"}
+                          </div>
                         </div>
-                        <div
-                          className={
-                            "mt-0.5 text-[11px] font-medium " +
-                            (c.includeInCommonExpense ? "text-emerald-600" : "text-slate-400")
-                          }
-                        >
-                          {c.includeInCommonExpense ? "✓ Included in Common Expense" : "✕ Excluded from Common Expense"}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditCategory(c)}
+                            className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            disabled={categorySaving || deletingCategory}
+                            onClick={() => {
+                              setDeleteCategoryError(null);
+                              setDeleteCategoryTarget(c);
+                            }}
+                            className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
                         </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingCategoryId(c.id);
-                            setEditingCategoryName(c.name);
-                            setEditingCategoryIncludeCommon(!!c.includeInCommonExpense);
-                            setEditingCategoryRole(parseExpenseCategoryRole(c.role, "normal"));
-                            setNewCategoryName("");
-                            setNewCategoryIncludeCommon(false);
-                            setNewCategoryRole("normal");
-                            setError(null);
-                          }}
-                          className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          disabled={categorySaving || deletingCategory}
-                          onClick={() => {
-                            setDeleteCategoryError(null);
-                            setDeleteCategoryTarget(c);
-                          }}
-                          className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </li>
-              ))}
+                    )}
+                  </section>
+                );
+              })}
+
               {managedCategories.length === 0 && (
-                <li className="px-3 py-6 text-center text-sm text-slate-400">
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-400">
                   No categories yet. Add one above.
-                </li>
+                </div>
               )}
-            </ul>
-          </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -742,6 +719,16 @@ export default function ExpensesPage() {
           setModalError(null);
         }}
         onSubmit={handleSave}
+      />
+
+      <CategoryModal
+        open={categoryModalOpen}
+        mode={categoryModalMode}
+        initial={editingCategory}
+        saving={categorySaving}
+        error={categoryModalError}
+        onClose={closeCategoryModal}
+        onSubmit={handleCategorySubmit}
       />
 
       <ConfirmDeleteModal

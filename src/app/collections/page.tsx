@@ -178,7 +178,6 @@ export default function CollectionsPage() {
   const [purposeFilterId, setPurposeFilterId] = useState(bootstrap.firstId);
   const [purposeReady, setPurposeReady] = useState(bootstrap.ready);
   const [modeFilter, setModeFilter] = useState<"all" | PaymentMode>("all");
-  const [statusFilter, setStatusFilter] = useState<"paid" | "pending">("paid");
 
   const [purposes, setPurposes] = useState<PurposeRecord[]>(bootstrap.purposes);
   const [purposeStats, setPurposeStats] = useState<PurposeStat[]>(bootstrap.stats);
@@ -487,7 +486,6 @@ export default function CollectionsPage() {
   const hasFilters =
     flatQ.trim() !== "" ||
     modeFilter !== "all" ||
-    statusFilter !== "paid" ||
     (!!firstPurpose && purposeFilterId !== firstPurpose.id);
 
   function flashSuccess(msg: string) {
@@ -498,7 +496,6 @@ export default function CollectionsPage() {
   function clearFilters() {
     setFlatQ("");
     setModeFilter("all");
-    setStatusFilter("paid");
     setPurposeFilterId(firstPurpose?.id ?? "");
   }
 
@@ -1007,47 +1004,22 @@ export default function CollectionsPage() {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          {(
-            [
-              { id: "paid" as const, label: "જમા થયેલ (Paid)" },
-              { id: "pending" as const, label: "બાકી (Pending)" },
-            ] as const
-          ).map((opt) => (
+          {(["all", "cash", "bank", "upi", "cheque"] as const).map((m) => (
             <button
-              key={opt.id}
+              key={m}
               type="button"
-              onClick={() => setStatusFilter(opt.id)}
+              onClick={() => setModeFilter(m)}
               className={
-                "rounded-full border px-3 py-1 text-xs font-medium transition " +
-                (statusFilter === opt.id
+                "rounded-full border px-3 py-1 text-xs font-medium capitalize transition " +
+                (modeFilter === m
                   ? "border-brand bg-brand text-white"
                   : "border-slate-200 bg-white text-slate-500")
               }
             >
-              {opt.label}
+              {m === "all" ? "All modes" : m}
             </button>
           ))}
         </div>
-
-        {statusFilter === "paid" && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {(["all", "cash", "bank", "upi", "cheque"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setModeFilter(m)}
-                className={
-                  "rounded-full border px-3 py-1 text-xs font-medium capitalize transition " +
-                  (modeFilter === m
-                    ? "border-brand bg-brand text-white"
-                    : "border-slate-200 bg-white text-slate-500")
-                }
-              >
-                {m === "all" ? "All modes" : m}
-              </button>
-            ))}
-          </div>
-        )}
 
         <ul className="mt-3 space-y-2.5">
           {selectedPurpose && selectedPurposeStat ? (
@@ -1219,89 +1191,92 @@ export default function CollectionsPage() {
               id={`purpose-accordion-${purpose.id}`}
               className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm"
             >
-              <div className="flex items-start gap-2 px-4 py-3">
-                <button
-                  type="button"
-                  onClick={() => togglePurposeAccordion(purpose.id)}
-                  className="min-w-0 flex-1 text-left"
-                  aria-expanded={isOpen}
-                >
-                  <div className="flex items-center gap-1.5">
-                    {normalizeCollectionScope(purpose.collectionScope) === "all" ? (
-                      <Building2
-                        className="h-3.5 w-3.5 shrink-0 text-slate-400"
-                        strokeWidth={2.25}
-                        aria-hidden
-                      />
-                    ) : (
-                      <Home
-                        className="h-3.5 w-3.5 shrink-0 text-slate-400"
-                        strokeWidth={2.25}
-                        aria-hidden
-                      />
-                    )}
-                    <div className="truncate text-sm font-bold text-navy">{purpose.title}</div>
-                  </div>
-                  <p className="mt-0.5 pl-5 text-[10px] font-medium text-slate-400">
-                    {collectionScopeShortLabel(
-                      normalizeCollectionScope(purpose.collectionScope)
-                    )}
-                  </p>
-                  {!!purpose.description.trim() && (
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
-                      {purpose.description}
-                    </p>
-                  )}
-                </button>
-
-                <div className="mt-0.5 flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                  {isSuperAdmin && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => openEditPurpose(purpose)}
-                        className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeletePurposeError(null);
-                          setDeletePurposeTarget(purpose);
-                        }}
-                        className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
+              <div className="px-4 py-3">
+                <div className="flex items-start gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (expandedPurposeId !== purpose.id) {
-                        togglePurposeAccordion(purpose.id);
-                      }
-                      setSummaryModalOpen(true);
-                    }}
-                    className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-navy hover:bg-slate-100"
+                    onClick={() => togglePurposeAccordion(purpose.id)}
+                    className="min-w-0 flex-1 text-left"
+                    aria-expanded={isOpen}
                   >
-                    Summary
+                    <div className="flex items-center gap-1.5">
+                      {normalizeCollectionScope(purpose.collectionScope) === "all" ? (
+                        <Building2
+                          className="h-3.5 w-3.5 shrink-0 text-slate-400"
+                          strokeWidth={2.25}
+                          aria-hidden
+                        />
+                      ) : (
+                        <Home
+                          className="h-3.5 w-3.5 shrink-0 text-slate-400"
+                          strokeWidth={2.25}
+                          aria-hidden
+                        />
+                      )}
+                      <div className="truncate text-sm font-bold text-navy">{purpose.title}</div>
+                    </div>
+                    <p className="mt-0.5 pl-5 text-[10px] font-medium text-slate-400">
+                      {collectionScopeShortLabel(
+                        normalizeCollectionScope(purpose.collectionScope)
+                      )}
+                    </p>
+                  </button>
+
+                  <div className="mt-0.5 flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                    {isSuperAdmin && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openEditPurpose(purpose)}
+                          className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeletePurposeError(null);
+                            setDeletePurposeTarget(purpose);
+                          }}
+                          className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (expandedPurposeId !== purpose.id) {
+                          togglePurposeAccordion(purpose.id);
+                        }
+                        setSummaryModalOpen(true);
+                      }}
+                      className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-navy hover:bg-slate-100"
+                    >
+                      Summary
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => togglePurposeAccordion(purpose.id)}
+                    className={
+                      "mt-0.5 shrink-0 px-0.5 text-slate-400 transition " +
+                      (isOpen ? "rotate-180" : "")
+                    }
+                    aria-label={isOpen ? "Collapse purpose" : "Expand purpose"}
+                    aria-expanded={isOpen}
+                  >
+                    ▾
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => togglePurposeAccordion(purpose.id)}
-                  className={
-                    "mt-0.5 shrink-0 px-0.5 text-slate-400 transition " +
-                    (isOpen ? "rotate-180" : "")
-                  }
-                  aria-label={isOpen ? "Collapse purpose" : "Expand purpose"}
-                  aria-expanded={isOpen}
-                >
-                  ▾
-                </button>
+                {!!purpose.description.trim() && (
+                  <p className="mt-1.5 break-words text-[11px] leading-snug text-slate-400 [overflow-wrap:anywhere] sm:leading-relaxed">
+                    {purpose.description}
+                  </p>
+                )}
               </div>
 
               {isOpen && (
@@ -1312,7 +1287,7 @@ export default function CollectionsPage() {
                     error={purposeDetailsError}
                     isSuperAdmin={isSuperAdmin}
                     searchQuery={flatQ}
-                    statusFilter={statusFilter}
+                    statusFilter="paid"
                     modeFilter={modeFilter}
                     hideHeader
                     onEditPayment={(row) => openEditPayment(row, purpose)}

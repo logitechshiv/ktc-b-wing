@@ -211,48 +211,97 @@ export default function PurposeDetailsPanel({
                       {row.flatNumber}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="truncate font-bold text-navy">{payerLabel}</div>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
-                            <span className="tabular-nums">{fmtDateDMY(row.paymentDate)}</span>
-                            <span className="text-slate-300">·</span>
-                            <span className="rounded bg-slate-100 px-1.5 py-0.5 capitalize text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                              {row.paymentMode}
-                            </span>
-                          </div>
+                      {/* Mobile: name + details full width; amount bottom-right */}
+                      <div className="sm:hidden">
+                        <div className="break-words font-bold text-navy">{payerLabel}</div>
+                        <div className="mt-0.5 text-[11px] text-slate-400">
+                          Flat {row.flatNumber}
                         </div>
-                        <div className="shrink-0 text-base font-bold tabular-nums text-brand">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+                          <span className="tabular-nums">{fmtDateDMY(row.paymentDate)}</span>
+                          <span className="text-slate-300">·</span>
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 capitalize text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                            {row.paymentMode}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-600/50 dark:bg-emerald-950 dark:text-emerald-300">
+                            🟢 જમા
+                          </span>
+                          {isBuilder && (
+                            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:border-amber-600/50 dark:bg-amber-950 dark:text-amber-300">
+                              Builder
+                            </span>
+                          )}
+                          {isSuperAdmin && !!row.paymentId && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onEditPayment?.(row)}
+                                className="inline-flex items-center rounded-lg border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onDeletePayment?.(row)}
+                                className="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                        <div className="mt-2 text-right text-base font-bold tabular-nums text-brand">
                           {inr(row.amount)}
                         </div>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-600/50 dark:bg-emerald-950 dark:text-emerald-300">
-                          🟢 જમા
-                        </span>
-                        {isBuilder && (
-                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:border-amber-600/50 dark:bg-amber-950 dark:text-amber-300">
-                            Builder
+
+                      {/* Tablet / desktop: keep existing side-by-side amount */}
+                      <div className="hidden sm:block">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate font-bold text-navy">{payerLabel}</div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+                              <span className="tabular-nums">{fmtDateDMY(row.paymentDate)}</span>
+                              <span className="text-slate-300">·</span>
+                              <span className="rounded bg-slate-100 px-1.5 py-0.5 capitalize text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                                {row.paymentMode}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-base font-bold tabular-nums text-brand">
+                            {inr(row.amount)}
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-600/50 dark:bg-emerald-950 dark:text-emerald-300">
+                            🟢 જમા
                           </span>
-                        )}
-                        {isSuperAdmin && !!row.paymentId && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => onEditPayment?.(row)}
-                              className="inline-flex items-center rounded-lg border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onDeletePayment?.(row)}
-                              className="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
+                          {isBuilder && (
+                            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:border-amber-600/50 dark:bg-amber-950 dark:text-amber-300">
+                              Builder
+                            </span>
+                          )}
+                          {isSuperAdmin && !!row.paymentId && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onEditPayment?.(row)}
+                                className="inline-flex items-center rounded-lg border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onDeletePayment?.(row)}
+                                className="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
