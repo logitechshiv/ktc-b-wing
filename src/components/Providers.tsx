@@ -4,16 +4,29 @@ import { RoleProvider } from "@/context/RoleContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import DataBootstrapProvider from "@/components/DataBootstrapProvider";
 
-export default function Providers({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
+function registerServiceWorker() {
+  if (typeof window === "undefined") return;
+  if (!("serviceWorker" in navigator)) return;
 
+  const register = () => {
     navigator.serviceWorker
-      .register("/sw.js")
+      .register("/sw.js", { scope: "/", updateViaCache: "none" })
       .then((reg) => {
         reg.update().catch(() => {});
       })
       .catch(() => {});
+  };
+
+  if (document.readyState === "complete") {
+    register();
+  } else {
+    window.addEventListener("load", register, { once: true });
+  }
+}
+
+export default function Providers({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    registerServiceWorker();
   }, []);
 
   return (
