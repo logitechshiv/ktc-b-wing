@@ -30,28 +30,32 @@ export default function SummaryTile({
   return (
     <div
       className={
-        "rounded-2xl " +
-        (wide ? "flex items-center justify-between gap-3 px-4 py-4" : "px-3.5 py-3.5")
+        "min-w-0 w-full overflow-hidden rounded-2xl " +
+        (wide
+          ? "flex items-center justify-between gap-3 px-4 py-4"
+          : "px-2.5 py-3 min-[480px]:px-3.5 min-[480px]:py-3.5")
       }
       style={{ backgroundColor: t.bg }}
     >
-      <div className={wide ? "min-w-0" : undefined}>
+      <div className="min-w-0">
         <div
           className={
-            "font-extrabold tabular-nums tracking-tight " +
+            "break-words font-extrabold tabular-nums tracking-tight " +
             (wide
-              ? "text-[1.75rem] leading-none sm:text-[2rem]"
-              : "text-[1.15rem] leading-tight sm:text-[1.35rem]")
+              ? "text-[1.5rem] leading-none min-[380px]:text-[1.75rem] sm:text-[2rem]"
+              : "text-[0.95rem] leading-tight min-[380px]:text-[1.1rem] sm:text-[1.35rem]")
           }
           style={{ color: t.value }}
         >
           {value}
         </div>
-        <div className={"flex items-start gap-1.5 " + (wide ? "mt-2" : "mt-2.5")}>
+        <div className={"flex items-start gap-1 " + (wide ? "mt-2 gap-1.5" : "mt-2 min-[480px]:mt-2.5")}>
           <span className="mt-0.5 shrink-0 text-sm leading-none" aria-hidden>
             {icon}
           </span>
-          <span className="text-[12px] font-medium leading-snug text-slate-500">{label}</span>
+          <span className="min-w-0 break-words text-[11px] font-medium leading-snug text-slate-500 min-[480px]:text-[12px]">
+            {label}
+          </span>
         </div>
       </div>
     </div>

@@ -95,16 +95,22 @@ const RECEIVED_PAYMENT_PIPELINE = [
   {
     $lookup: {
       from: "payment_purposes",
-      localField: "paymentPurposeId",
-      foreignField: "_id",
+      let: { purposeId: "$paymentPurposeId" },
+      pipeline: [
+        { $match: { $expr: { $eq: ["$_id", "$$purposeId"] } } },
+        { $project: { collectionScope: 1 } },
+      ],
       as: "purpose",
     },
   },
   {
     $lookup: {
       from: "flats",
-      localField: "flatId",
-      foreignField: "_id",
+      let: { flatId: "$flatId" },
+      pipeline: [
+        { $match: { $expr: { $eq: ["$_id", "$$flatId"] } } },
+        { $project: { status: 1, ownerName: 1, renterName: 1 } },
+      ],
       as: "flat",
     },
   },
@@ -187,6 +193,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         { $sort: { total: -1 } },
       ]).exec(),
       Expense.find({})
+        .select(
+          "category expenseTitleGujarati amount displayOrder paymentMethod expenseDate billImage billImages notes whatsappShared createdAt"
+        )
         .sort({ createdAt: -1, expenseDate: -1 })
         .limit(3)
         .lean()

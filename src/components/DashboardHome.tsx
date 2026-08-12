@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { stats as mockStats } from "@/lib/mock-data";
 import { inr } from "@/lib/format";
@@ -17,8 +18,18 @@ import { CacheKeys, peekCache } from "@/lib/data-cache";
 import ExpenseRow from "@/components/ExpenseRow";
 import SummaryTile from "@/components/SummaryTile";
 import NoticeCard from "@/components/NoticeCard";
-import CommonExpenseSplit from "@/components/CommonExpenseSplit";
-import Kiran3CommonCard from "@/components/Kiran3CommonCard";
+
+const Kiran3CommonCard = dynamic(() => import("@/components/Kiran3CommonCard"), {
+  loading: () => (
+    <p className="py-6 text-center text-sm text-slate-400">Loading…</p>
+  ),
+});
+
+const CommonExpenseSplit = dynamic(() => import("@/components/CommonExpenseSplit"), {
+  loading: () => (
+    <p className="py-6 text-center text-sm text-slate-400">Loading…</p>
+  ),
+});
 
 function toExpenseRow(e: DashboardRecentExpense) {
   const billUrls =
@@ -39,13 +50,20 @@ function toExpenseRow(e: DashboardRecentExpense) {
   };
 }
 
+function latestFromNotices(list: NoticeRecord[]) {
+  return list.slice(0, 3);
+}
+
 export default function DashboardHome() {
   const cachedDash = peekCache<DashboardStats>(CacheKeys.dashboard());
-  const cachedNotices = peekCache<NoticeRecord[]>(CacheKeys.notices("", 3));
+  // Share full notices list cache with /notices (avoid a separate limit=3 request)
+  const cachedNotices = peekCache<NoticeRecord[]>(CacheKeys.notices("", 0));
   const [dash, setDash] = useState<DashboardStats>(cachedDash ?? EMPTY_DASHBOARD);
   const [loading, setLoading] = useState(!cachedDash);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [latestNotices, setLatestNotices] = useState<NoticeRecord[]>(cachedNotices ?? []);
+  const [latestNotices, setLatestNotices] = useState<NoticeRecord[]>(
+    cachedNotices ? latestFromNotices(cachedNotices) : []
+  );
   const [noticesLoading, setNoticesLoading] = useState(!cachedNotices);
   const [openNoticeId, setOpenNoticeId] = useState<string | null>(null);
 
@@ -68,8 +86,8 @@ export default function DashboardHome() {
 
   const loadNotices = useCallback(async () => {
     try {
-      const list = await readNotices({ limit: 3 });
-      setLatestNotices(list);
+      const list = await readNotices({ q: "" });
+      setLatestNotices(latestFromNotices(list));
     } catch {
       setLatestNotices([]);
     } finally {
@@ -123,48 +141,25 @@ export default function DashboardHome() {
           Fund Summary
         </h2>
 
-        <div className="space-y-3">
-          {/* <SummaryTile
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3">
+          <SummaryTile
             value={loading ? "…" : inr(dash.totalBalance)}
             label="Total Balance"
             icon="⚖️"
             tone="violet"
-            wide
-          /> */}   
-
-          <div className="grid grid-cols-3 gap-3">
-            <SummaryTile
-            value={loading ? "…" : inr(dash.totalBalance)}
-            label="Total Balance"
-            icon="⚖️"
-            tone="violet"
-            wide
           />
-            {/* <SummaryTile
-              value={loading ? "…" : inr(dash.totalCollection)}
-              label="Collected"
-              icon="📥"
-              tone="green"
-            />
-            <SummaryTile
-              value={loading ? "…" : inr(dash.totalExpense)}
-              label="Expense"
-              icon="📤"
-              tone="rose"
-            /> */}
-            <SummaryTile
-              value={loading ? "…" : inr(dash.cashInHand)}
-              label="Cash in Hand"
-              icon="💵"
-              tone="amber"
-            />
-            <SummaryTile
-              value={loading ? "…" : inr(dash.bankBalance)}
-              label="Bank Balance"
-              icon="🏦"
-              tone="sky"
-            />
-          </div>
+          <SummaryTile
+            value={loading ? "…" : inr(dash.cashInHand)}
+            label="Cash in Hand"
+            icon="💵"
+            tone="amber"
+          />
+          <SummaryTile
+            value={loading ? "…" : inr(dash.bankBalance)}
+            label="Bank Balance"
+            icon="🏦"
+            tone="sky"
+          />
         </div>
 
         {/* Flats — one compact row (not separate boxes) */}

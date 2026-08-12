@@ -26,8 +26,9 @@ function isBareRoute(pathname: string) {
 }
 
 /**
- * Prefetches all module data once when the main app shell mounts,
- * then exposes ready=true so roots render from cache with no first-load fetch.
+ * Starts progressive prefetch when the main app shell mounts.
+ * Never blocks the UI behind a global loading screen — pages render
+ * immediately and hydrate from cache / their own section loaders.
  */
 export default function DataBootstrapProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "";
@@ -40,14 +41,6 @@ export default function DataBootstrapProvider({ children }: { children: ReactNod
       return;
     }
 
-    if (isAppDataReady() || hasCoreModuleCache()) {
-      setReady(true);
-      // Still ensure any missing keys are filled without blocking UI
-      void bootstrapAppData().finally(() => setReady(true));
-      return;
-    }
-
-    setReady(false);
     let cancelled = false;
     void bootstrapAppData()
       .catch(() => undefined)
@@ -60,16 +53,8 @@ export default function DataBootstrapProvider({ children }: { children: ReactNod
     };
   }, [bare]);
 
-  if (!bare && !ready) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-surface dark:bg-slate-950">
-        <p className="text-sm text-slate-400">Loading…</p>
-      </div>
-    );
-  }
-
   return (
-    <AppDataReadyContext.Provider value={ready || bare}>
+    <AppDataReadyContext.Provider value={bare || ready || isAppDataReady()}>
       {children}
     </AppDataReadyContext.Provider>
   );

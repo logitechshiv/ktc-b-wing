@@ -39,14 +39,15 @@ export default function NotificationBell() {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
     try {
+      // Same cache key as /notifications (limit 100) — avoids a duplicate bootstrap fetch
       const data = await readNotificationsForEveryone({
-        limit: 12,
+        limit: 100,
         status: "all",
         force,
       });
       setAuthenticated(data.authenticated);
       setUnreadCount(data.unreadCount);
-      setItems(data.notifications);
+      setItems(data.notifications.slice(0, 12));
     } catch {
       setItems([]);
       setUnreadCount(0);

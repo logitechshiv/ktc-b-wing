@@ -1,7 +1,8 @@
 /**
- * One-shot application data bootstrap.
- * Prefetches every module's default read into the shared `data-cache`,
- * so navigating roots never triggers a first-visit network load.
+ * Progressive application data bootstrap.
+ * Critical path warms auth + dashboard first; secondary modules fill the
+ * shared cache afterward so the UI is never blocked on a full prefetch.
+ * Purpose details are NOT prefetched (loaded on demand by Collections).
  */
 
 import { readCurrentUser } from "@/lib/auth-client";
@@ -13,11 +14,12 @@ import { readVehicles } from "@/lib/vehicles-api";
 import { readExpenses, readExpenseCategories } from "@/lib/expenses-api";
 import { readNotices } from "@/lib/notices-api";
 import { readNotificationsForEveryone } from "@/lib/notifications-api";
-import { readPurposes, readPurposeDetails } from "@/lib/payment-purposes-api";
+import { readPurposes } from "@/lib/payment-purposes-api";
 import { hasCache, CacheKeys } from "@/lib/data-cache";
 
 let bootstrapPromise: Promise<void> | null = null;
 let bootstrapDone = false;
+let criticalPromise: Promise<void> | null = null;
 
 export function isAppDataReady(): boolean {
   return bootstrapDone;
@@ -28,8 +30,35 @@ export function awaitAppDataBootstrap(): Promise<void> {
   return bootstrapAppData();
 }
 
+function scheduleDeferred(fn: () => void) {
+  if (typeof window === "undefined") {
+    fn();
+    return;
+  }
+  const ric = (
+    window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    }
+  ).requestIdleCallback;
+  if (typeof ric === "function") {
+    ric(() => fn(), { timeout: 2500 });
+  } else {
+    window.setTimeout(fn, 50);
+  }
+}
+
+/** Auth + dashboard — enough for home Fund Summary to paint from cache soon. */
+export function bootstrapCriticalData(): Promise<void> {
+  if (criticalPromise) return criticalPromise;
+  criticalPromise = Promise.all([
+    readCurrentUser().catch(() => null),
+    readDashboard().catch(() => undefined),
+  ]).then(() => undefined);
+  return criticalPromise;
+}
+
 /**
- * Prefetch all default module datasets in parallel into the existing cache.
+ * Prefetch module datasets into the shared cache without blocking the shell.
  * Safe to call multiple times — shares one promise.
  */
 export function bootstrapAppData(): Promise<void> {
@@ -40,35 +69,34 @@ export function bootstrapAppData(): Promise<void> {
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
 
-    // Wave 1 — independent module roots (parallel)
-    const [purposesResult] = await Promise.all([
-      readPurposes(false).catch(() => ({ purposes: [], stats: [] })),
-      readCurrentUser().catch(() => null),
-      readDashboard().catch(() => undefined),
+    // Wave 1 — critical for Dashboard home (parallel, deduped with page fetches)
+    await bootstrapCriticalData();
+
+    // Wave 2 — home-adjacent + list roots (parallel). One notices + one notifications call.
+    await Promise.all([
       readCommonExpenseSplit(month, year).catch(() => undefined),
       readKiran3CommonBalance().catch(() => undefined),
-      readFlats({ status: "all" }).catch(() => undefined),
-      readVehicles({ q: "", sticker: "all", type: "all" }).catch(() => undefined),
-      readExpenses({ q: "", category: "all" }).catch(() => undefined),
-      readExpenseCategories().catch(() => undefined),
       readNotices({ q: "" }).catch(() => undefined),
-      readNotices({ limit: 3 }).catch(() => undefined),
       readNotificationsForEveryone({ limit: 100, status: "all" }).catch(() => undefined),
-      readNotificationsForEveryone({ limit: 12, status: "all" }).catch(() => undefined),
+      readPurposes(false).catch(() => undefined),
+      readExpenseCategories().catch(() => undefined),
     ]);
 
-    // Wave 2 — purpose details for collections accordion / filter summary
-    const purposes = purposesResult?.purposes ?? [];
-    if (purposes.length > 0) {
-      await Promise.all(
-        purposes.map((p) => readPurposeDetails(p.id).catch(() => undefined))
-      );
-    }
+    // Wave 3 — heavier module lists after idle (SPA nav warm; not needed for first paint)
+    await new Promise<void>((resolve) => {
+      scheduleDeferred(() => {
+        void Promise.all([
+          readFlats({ status: "all" }).catch(() => undefined),
+          readVehicles({ q: "", sticker: "all", type: "all" }).catch(() => undefined),
+          readExpenses({ q: "", category: "all" }).catch(() => undefined),
+        ]).finally(() => resolve());
+      });
+    });
 
     bootstrapDone = true;
   })().catch((err) => {
-    // Allow a retry on next call if the whole bootstrap failed hard
     bootstrapPromise = null;
+    criticalPromise = null;
     bootstrapDone = false;
     throw err;
   });
