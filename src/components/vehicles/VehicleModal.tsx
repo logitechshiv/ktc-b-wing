@@ -67,31 +67,47 @@ function isSoldFlat(flat: FlatRecord) {
 }
 
 /**
- * Sold flats only — one row per flat:
- * - has renter → `101-dipak bhai (Renter)`
- * - owner only → `101-નિલેશ શાહ (Owner)`
- * - no owner → `103-કોઈ માલિક નથી` (disabled)
+ * Sold / rent flats from Flats module — dropdown options:
+ * - Owner present → `101 - Name (Owner)`
+ * - Renter present → `101 - Name (Renter)`
+ * - Both present → both options (vehicles can belong to either)
+ * - Neither → disabled `કોઈ માલિક નથી`
  */
 function buildFlatOptions(flats: FlatRecord[]): FlatDropdownOption[] {
   const sorted = [...flats]
     .filter(isSoldFlat)
-    .sort((a, b) => Number(a.flatNumber) - Number(b.flatNumber));
+    .sort(
+      (a, b) =>
+        Number(a.flatNumber) - Number(b.flatNumber) ||
+        a.flatNumber.localeCompare(b.flatNumber, undefined, { numeric: true })
+    );
   const options: FlatDropdownOption[] = [];
 
   for (const flat of sorted) {
     const ownerName = flat.ownerName?.trim() || "";
     const renterName = flat.renterName?.trim() || "";
+    const hasOwner = !!ownerName;
     const hasRenter = !!(renterName || flat.renterMobile?.trim());
 
-    if (!ownerName) {
+    if (!hasOwner && !hasRenter) {
       options.push({
         value: optionValue(flat.id, "none"),
         flatId: flat.id,
         kind: "none",
-        label: `${flat.flatNumber}-કોઈ માલિક નથી`,
+        label: `${flat.flatNumber} - કોઈ માલિક નથી`,
         disabled: true,
       });
       continue;
+    }
+
+    if (hasOwner) {
+      options.push({
+        value: optionValue(flat.id, "owner"),
+        flatId: flat.id,
+        kind: "owner",
+        label: `${flat.flatNumber} - ${ownerName} (Owner)`,
+        disabled: false,
+      });
     }
 
     if (hasRenter) {
@@ -99,19 +115,10 @@ function buildFlatOptions(flats: FlatRecord[]): FlatDropdownOption[] {
         value: optionValue(flat.id, "renter"),
         flatId: flat.id,
         kind: "renter",
-        label: `${flat.flatNumber}-${renterName || "Renter"} (Renter)`,
+        label: `${flat.flatNumber} - ${renterName || "Renter"} (Renter)`,
         disabled: false,
       });
-      continue;
     }
-
-    options.push({
-      value: optionValue(flat.id, "owner"),
-      flatId: flat.id,
-      kind: "owner",
-      label: `${flat.flatNumber}-${ownerName} (Owner)`,
-      disabled: false,
-    });
   }
 
   return options;
@@ -154,23 +161,25 @@ export default function VehicleModal({
     parsed?.kind === "renter" ? "renter" : "owner";
 
   const ownerAvailable = !!selectedFlat?.ownerName?.trim();
+  const renterAvailable = !!(
+    selectedFlat?.renterName?.trim() || selectedFlat?.renterMobile?.trim()
+  );
   const canSave =
     !!selectedFlat &&
     !!parsed &&
     parsed.kind !== "none" &&
-    (parsed.kind === "owner"
-      ? ownerAvailable
-      : !!(selectedFlat.renterName?.trim() || selectedFlat.renterMobile?.trim()));
+    (parsed.kind === "owner" ? ownerAvailable : renterAvailable);
 
-  // Load all flats when modal opens
+  // Load latest flats from Flats module when modal opens
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setFlatsLoading(true);
-    readFlats({ status: "all" })
+    readFlats({ status: "all", force: true })
       .then((floors) => {
         if (cancelled) return;
-        setFlats(floors.flatMap((g) => g.flats).filter(isSoldFlat));
+        const allFlats = floors.flatMap((g) => g.flats);
+        setFlats(allFlats.filter(isSoldFlat));
       })
       .catch(() => {
         if (!cancelled) setFlats([]);
@@ -221,19 +230,23 @@ export default function VehicleModal({
 
     const preferRenter = initial.vehicleOwnerType === "renter";
     const hasRenter = !!(match.renterName?.trim() || match.renterMobile?.trim());
-    // Dropdown shows only Renter when present; otherwise Owner
-    const kind: FlatOptionKind = hasRenter
-      ? "renter"
-      : match.ownerName?.trim()
-        ? "owner"
-        : "none";
-    if (kind === "none") return;
-    // Prefer matching saved ownerType when both were historically possible
+    const hasOwner = !!match.ownerName?.trim();
+
     if (preferRenter && hasRenter) {
       setSelection(optionValue(match.id, "renter"));
       return;
     }
-    setSelection(optionValue(match.id, kind));
+    if (!preferRenter && hasOwner) {
+      setSelection(optionValue(match.id, "owner"));
+      return;
+    }
+    if (hasOwner) {
+      setSelection(optionValue(match.id, "owner"));
+      return;
+    }
+    if (hasRenter) {
+      setSelection(optionValue(match.id, "renter"));
+    }
   }, [open, flats, flatOptions, selection, mode, initial]);
 
   if (!open) return null;
@@ -265,11 +278,11 @@ export default function VehicleModal({
       setLocalError("Please select a Flat / Owner");
       return;
     }
-    if (!ownerAvailable) {
+    if (parsed.kind === "owner" && !ownerAvailable) {
       setLocalError("કોઈ માલિક નથી");
       return;
     }
-    if (parsed.kind === "renter" && !selectedFlat.renterName?.trim() && !selectedFlat.renterMobile?.trim()) {
+    if (parsed.kind === "renter" && !renterAvailable) {
       setLocalError("No renter is available for this flat.");
       return;
     }
@@ -283,6 +296,14 @@ export default function VehicleModal({
         ? selectedFlat.renterMobile.trim()
         : selectedFlat.ownerMobile.trim();
 
+    if (!contactName) {
+      setLocalError(
+        vehicleOwnerType === "renter"
+          ? "No renter name found for this flat."
+          : "કોઈ માલિક નથી"
+      );
+      return;
+    }
     const cleaned: VehicleEntryInput[] = [];
     const seen = new Set<string>();
 

@@ -24,7 +24,7 @@ export function serializeVehicle(doc: {
   updatedAt?: Date;
 }) {
   const ownerName =
-    String(doc.ownerNameGujarati || "").trim() || String(doc.ownerName || "").trim();
+    String(doc.ownerName || "").trim() || String(doc.ownerNameGujarati || "").trim();
 
   return {
     id: doc._id.toString(),

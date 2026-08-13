@@ -406,16 +406,19 @@ export default function VehiclesPage() {
 
       {!loading &&
         groups.map((group) => {
-          // Role tag must come from MongoDB vehicleOwnerType on the vehicle docs
+          // Group is keyed by owner|renter — use that as source of truth for the label
           const vehicleOwnerType =
             String(
-              group.vehicles[0]?.vehicleOwnerType ?? group.vehicleOwnerType ?? "owner"
+              group.vehicleOwnerType || group.vehicles[0]?.vehicleOwnerType || "owner"
             ).toLowerCase() === "renter"
               ? "renter"
               : "owner";
           const roleLabel = vehicleOwnerType === "renter" ? "Renter" : "Owner";
-          const displayName = group.ownerName || `Flat ${group.flatNumber}`;
-          const displayMobile = group.ownerMobile;
+          const personName =
+            (group.ownerName || group.vehicles[0]?.ownerName || "").trim() ||
+            `Flat ${group.flatNumber}`;
+          const displayMobile =
+            (group.ownerMobile || group.vehicles[0]?.ownerMobile || "").trim();
 
           return (
             <section
@@ -431,8 +434,11 @@ export default function VehiclesPage() {
                 >
                   {group.flatNumber}
                 </span>
-                <div className="mt-2 text-center text-base font-bold text-navy">{displayName} <span className="mt-0.5 text-[11px] font-medium text-slate-400">({roleLabel})</span></div>
-                
+                <div className="mt-2 max-w-full break-words px-1 text-center text-base font-bold text-navy">
+                  {personName}{" "}
+                  <span className="font-medium text-slate-400">({roleLabel})</span>
+                </div>
+
                 {displayMobile && (
                   <button
                     type="button"
@@ -555,7 +561,10 @@ export default function VehiclesPage() {
             {deleteTarget.ownerName ? (
               <>
                 <br />
-                <span className="font-semibold">Owner:</span> {deleteTarget.ownerName}
+                <span className="font-semibold">
+                  {deleteTarget.vehicleOwnerType === "renter" ? "Renter" : "Owner"}:
+                </span>{" "}
+                {deleteTarget.ownerName}
               </>
             ) : null}
           </p>

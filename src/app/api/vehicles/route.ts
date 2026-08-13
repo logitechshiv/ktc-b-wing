@@ -90,18 +90,23 @@ export async function GET(request: Request) {
 
       if (flat) {
         if (belongs === "renter") {
+          const renterName = String(flat.renterName || "").trim();
+          const renterMobile = String(flat.renterMobile || "").trim();
           return {
             ...base,
             vehicleOwnerType: "renter" as const,
-            ownerName: flat.renterName || base.ownerName,
-            ownerMobile: flat.renterMobile || base.ownerMobile,
+            // Prefer flat renter contact; fall back to saved vehicle contact (never silent owner swap)
+            ownerName: renterName || base.ownerName,
+            ownerMobile: renterMobile || base.ownerMobile,
           };
         }
+        const ownerName = String(flat.ownerName || "").trim();
+        const ownerMobile = String(flat.ownerMobile || "").trim();
         return {
           ...base,
           vehicleOwnerType: "owner" as const,
-          ownerName: flat.ownerName || base.ownerName,
-          ownerMobile: flat.ownerMobile || base.ownerMobile,
+          ownerName: ownerName || base.ownerName,
+          ownerMobile: ownerMobile || base.ownerMobile,
         };
       }
 
@@ -198,28 +203,34 @@ export async function POST(request: Request) {
       );
     }
 
+    const wantsRenter = first.vehicleOwnerType === "renter";
     const flatOwnerName = String(flat.ownerName || "").trim();
-    if (!flatOwnerName) {
+    const flatRenterName = String(flat.renterName || "").trim();
+    const flatOwnerMobile = String(flat.ownerMobile || "").trim();
+    const flatRenterMobile = String(flat.renterMobile || "").trim();
+
+    if (wantsRenter) {
+      if (!flatRenterName && !flatRenterMobile) {
+        return NextResponse.json(
+          { success: false, message: "No renter is available for this flat" },
+          { status: 400 }
+        );
+      }
+      if (!flatRenterName) {
+        return NextResponse.json(
+          { success: false, message: "Renter name is required for this flat" },
+          { status: 400 }
+        );
+      }
+    } else if (!flatOwnerName) {
       return NextResponse.json(
         { success: false, message: "કોઈ માલિક નથી — cannot add a vehicle to this flat" },
         { status: 400 }
       );
     }
 
-    const wantsRenter = first.vehicleOwnerType === "renter";
-    const flatRenterName = String(flat.renterName || "").trim();
-    if (wantsRenter && !flatRenterName && !String(flat.renterMobile || "").trim()) {
-      return NextResponse.json(
-        { success: false, message: "No renter is available for this flat" },
-        { status: 400 }
-      );
-    }
-
     const contactName = wantsRenter ? flatRenterName : flatOwnerName;
-    const contactMobile = wantsRenter
-      ? String(flat.renterMobile || "").trim()
-      : String(flat.ownerMobile || "").trim();
-
+    const contactMobile = wantsRenter ? flatRenterMobile : flatOwnerMobile;
     const numbers = payloads.map((p) => p.vehicleNumber).filter(Boolean);
     if (numbers.length > 0) {
       const existing = await Vehicle.find({ vehicleNumber: { $in: numbers } }).select("vehicleNumber");

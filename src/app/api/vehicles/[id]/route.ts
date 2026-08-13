@@ -67,28 +67,34 @@ export async function PUT(request: Request, context: RouteContext) {
       );
     }
 
+    const wantsRenter = data.vehicleOwnerType === "renter";
     const flatOwnerName = String(flat.ownerName || "").trim();
-    if (!flatOwnerName) {
+    const flatRenterName = String(flat.renterName || "").trim();
+    const flatOwnerMobile = String(flat.ownerMobile || "").trim();
+    const flatRenterMobile = String(flat.renterMobile || "").trim();
+
+    if (wantsRenter) {
+      if (!flatRenterName && !flatRenterMobile) {
+        return NextResponse.json(
+          { success: false, message: "No renter is available for this flat" },
+          { status: 400 }
+        );
+      }
+      if (!flatRenterName) {
+        return NextResponse.json(
+          { success: false, message: "Renter name is required for this flat" },
+          { status: 400 }
+        );
+      }
+    } else if (!flatOwnerName) {
       return NextResponse.json(
         { success: false, message: "કોઈ માલિક નથી — cannot save a vehicle for this flat" },
         { status: 400 }
       );
     }
 
-    const wantsRenter = data.vehicleOwnerType === "renter";
-    const flatRenterName = String(flat.renterName || "").trim();
-    if (wantsRenter && !flatRenterName && !String(flat.renterMobile || "").trim()) {
-      return NextResponse.json(
-        { success: false, message: "No renter is available for this flat" },
-        { status: 400 }
-      );
-    }
-
     const contactName = wantsRenter ? flatRenterName : flatOwnerName;
-    const contactMobile = wantsRenter
-      ? String(flat.renterMobile || "").trim()
-      : String(flat.ownerMobile || "").trim();
-
+    const contactMobile = wantsRenter ? flatRenterMobile : flatOwnerMobile;
     if (data.vehicleNumber) {
       const duplicate = await Vehicle.findOne({
         vehicleNumber: data.vehicleNumber,

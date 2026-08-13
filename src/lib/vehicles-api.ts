@@ -141,10 +141,10 @@ export async function readVehicles(
         vehicles: ((data.vehicles as Record<string, unknown>[]) || []).map(toVehicle),
         groups: ((data.groups as Array<Record<string, unknown>>) || []).map((g) => {
           const vehicles = ((g.vehicles as Record<string, unknown>[]) || []).map(toVehicle);
-          // Prefer the vehicle document field — this is the source of truth from MongoDB
+          // Prefer group field (card is keyed by owner|renter), then vehicle docs
           const rawType =
-            vehicles[0]?.vehicleOwnerType ??
-            (typeof g.vehicleOwnerType === "string" ? g.vehicleOwnerType : undefined);
+            (typeof g.vehicleOwnerType === "string" ? g.vehicleOwnerType : undefined) ??
+            vehicles[0]?.vehicleOwnerType;
           const vehicleOwnerType: VehicleOwnerType =
             String(rawType ?? "owner").toLowerCase() === "renter" ? "renter" : "owner";
 
@@ -153,8 +153,18 @@ export async function readVehicles(
             floorNumber: Number(g.floorNumber),
             flatNumber: String(g.flatNumber ?? ""),
             vehicleOwnerType,
-            ownerName: String(vehicles[0]?.ownerName || g.ownerName || ""),
-            ownerMobile: String(vehicles[0]?.ownerMobile || g.ownerMobile || ""),
+            ownerName: String(
+              g.ownerName ||
+                vehicles.find((v) => v.vehicleOwnerType === vehicleOwnerType)?.ownerName ||
+                vehicles[0]?.ownerName ||
+                ""
+            ),
+            ownerMobile: String(
+              g.ownerMobile ||
+                vehicles.find((v) => v.vehicleOwnerType === vehicleOwnerType)?.ownerMobile ||
+                vehicles[0]?.ownerMobile ||
+                ""
+            ),
             vehicles,
           };
         }),
