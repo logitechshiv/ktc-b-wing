@@ -62,9 +62,9 @@ export default function CollectionModal({
   formMode,
   formSaving,
   formTab,
-  formBuilderName,
-  formUnsoldPending,
-  formUnsoldAllPaid,
+  formBuilderName: _formBuilderName,
+  formUnsoldPending: _formUnsoldPending,
+  formUnsoldAllPaid: _formUnsoldAllPaid,
   error,
   onClose,
   onPurposeSearchChange,
@@ -75,7 +75,7 @@ export default function CollectionModal({
   onNotesChange,
   onModeChange,
   onTabChange,
-  onBuilderNameChange,
+  onBuilderNameChange: _onBuilderNameChange,
   onSave,
   onSwitchToBuilder,
 }: Props) {
@@ -105,26 +105,14 @@ export default function CollectionModal({
     ? purposes.filter((p) => p.id === formPurposeId)
     : searchablePurposes;
 
-  const selectedPurpose =
-    purposes.find((p) => p.id === formPurposeId) ||
-    purposeOptions.find((p) => p.id === formPurposeId) ||
-    null;
-  const collectionScope = normalizeCollectionScope(selectedPurpose?.collectionScope);
-  const allowUnsold = collectionScope === "all";
+  // Member collection is sold flats only — Builder payer type handles common-expense builder share
+  useEffect(() => {
+    if (open && formTab !== "sold") onTabChange("sold");
+  }, [open, formTab, onTabChange]);
 
-  const isSold = formTab === "sold" || !allowUnsold;
   const soldBlocked = !formPurposeId || formAllPaid || formPendingLoading;
-  const unsoldBlocked = !formPurposeId || formUnsoldAllPaid || formPendingLoading;
   const canSaveSold =
     !formSaving && !!formPurposeId && !formAllPaid && formSelectedKeys.length > 0 && formAmount > 0;
-  const canSaveUnsold =
-    !formSaving &&
-    !!formPurposeId &&
-    allowUnsold &&
-    !formUnsoldAllPaid &&
-    !!formBuilderName.trim() &&
-    formAmount > 0 &&
-    formUnsoldPending.length > 0;
 
   const selectedOptions = useMemo(() => {
     const map = new Map(collectOptions.map((o) => [o.key, o]));
@@ -199,40 +187,6 @@ export default function CollectionModal({
           </div>
         </div>
 
-        {allowUnsold ? (
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            {(
-              [
-                { id: "sold" as const, label: "Sold Flats" },
-                { id: "unsold" as const, label: "Unsold Flats (Builder)" },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                disabled={formSaving}
-                onClick={() => onTabChange(tab.id)}
-                className={
-                  "rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition " +
-                  (formTab === tab.id
-                    ? "border-brand bg-brand/5 text-brand"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50")
-                }
-              >
-                <span className="mr-1.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-current text-[9px]">
-                  {formTab === tab.id ? "●" : "○"}
-                </span>
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="mb-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-            This purpose applies to <span className="font-semibold text-navy">Sold Flats Only</span>
-            {" — "}Owner / Renter collection.
-          </p>
-        )}
-
         <div className="space-y-3">
           <label className="block text-xs font-semibold text-slate-600">
             Purpose
@@ -270,231 +224,151 @@ export default function CollectionModal({
             )}
           </label>
 
-          {isSold ? (
-            <>
-              <div className="block text-xs font-semibold text-slate-600">
-                Flat / Owner / Renter
-                <div ref={dropdownRef} className="relative mt-1">
-                  <button
-                    type="button"
-                    disabled={soldBlocked}
-                    onClick={() => setDropdownOpen((v) => !v)}
-                    className={
-                      "flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm outline-none focus:border-brand disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 " +
-                      (dropdownOpen ? "border-brand" : "")
-                    }
-                  >
-                    <span className="truncate text-slate-600">
-                      {!formPurposeId
-                        ? "Select a purpose first…"
-                        : formPendingLoading
-                          ? "Loading…"
-                          : formSelectedKeys.length > 0
-                            ? `${formSelectedKeys.length} selected`
-                            : "Search & select Owner/Renter…"}
-                    </span>
-                    <span className="text-slate-400" aria-hidden>
-                      ▾
-                    </span>
-                  </button>
+          <div className="block text-xs font-semibold text-slate-600">
+            Flat / Owner / Renter
+            <div ref={dropdownRef} className="relative mt-1">
+              <button
+                type="button"
+                disabled={soldBlocked}
+                onClick={() => setDropdownOpen((v) => !v)}
+                className={
+                  "flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm outline-none focus:border-brand disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 " +
+                  (dropdownOpen ? "border-brand" : "")
+                }
+              >
+                <span className="truncate text-slate-600">
+                  {!formPurposeId
+                    ? "Select a purpose first…"
+                    : formPendingLoading
+                      ? "Loading…"
+                      : formSelectedKeys.length > 0
+                        ? `${formSelectedKeys.length} selected`
+                        : "Search & select Owner/Renter…"}
+                </span>
+                <span className="text-slate-400" aria-hidden>
+                  ▾
+                </span>
+              </button>
 
-                  {dropdownOpen && !soldBlocked && (
-                    <div className="absolute z-20 mt-1 max-h-64 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-                      <div className="border-b border-slate-100 p-2">
-                        <input
-                          value={personSearch}
-                          onChange={(e) => setPersonSearch(e.target.value)}
-                          placeholder="Search flat, name…"
-                          className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm outline-none focus:border-brand"
-                          autoFocus
-                        />
-                      </div>
-                      <ul className="max-h-48 overflow-y-auto py-1">
-                        {filteredOptions.map((opt) => {
-                          const checked = formSelectedKeys.includes(opt.key);
-                          return (
-                            <li key={opt.key}>
-                              <label className="flex cursor-pointer items-start gap-2.5 px-3 py-2 text-sm hover:bg-brand/5">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleKey(opt.key)}
-                                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
-                                />
-                                <span className="min-w-0 leading-snug text-navy">{opt.label}</span>
-                              </label>
-                            </li>
-                          );
-                        })}
-                        {filteredOptions.length === 0 && (
-                          <li className="px-3 py-4 text-center text-sm text-slate-400">
-                            No matching Owner/Renter
-                          </li>
-                        )}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                {selectedOptions.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {selectedOptions.map((opt) => (
-                      <span
-                        key={opt.key}
-                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-brand/20 bg-brand/5 px-2.5 py-1 text-[11px] font-medium text-brand"
-                      >
-                        <span className="truncate">{opt.label}</span>
-                        <button
-                          type="button"
-                          disabled={formSaving}
-                          onClick={() => removeKey(opt.key)}
-                          className="shrink-0 text-brand/70 hover:text-brand"
-                          aria-label={`Remove ${opt.label}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
+              {dropdownOpen && !soldBlocked && (
+                <div className="absolute z-20 mt-1 max-h-64 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                  <div className="border-b border-slate-100 p-2">
+                    <input
+                      value={personSearch}
+                      onChange={(e) => setPersonSearch(e.target.value)}
+                      placeholder="Search flat, name…"
+                      className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm outline-none focus:border-brand"
+                      autoFocus
+                    />
                   </div>
-                )}
-              </div>
-
-              {formPurposeId && formAllPaid && (
-                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                  No pending sold flats with owners for this purpose.
-                </p>
-              )}
-
-              <label className="block text-xs font-semibold text-slate-600">
-                Amount (Per Flat)
-                <input
-                  type="number"
-                  value={formAmount}
-                  onChange={(e) => onAmountChange(Number(e.target.value))}
-                  disabled={soldBlocked}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
-                />
-              </label>
-              <div>
-                <div className="mb-1.5 text-xs font-semibold text-slate-600">Payment Method</div>
-                <div className="flex flex-wrap gap-2">
-                  {(["cash", "bank", "upi", "cheque"] as const).map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      disabled={soldBlocked}
-                      onClick={() => onModeChange(m)}
-                      className={
-                        "min-w-[4.5rem] flex-1 rounded-xl border px-3 py-2 text-sm capitalize disabled:opacity-50 " +
-                        (formMode === m
-                          ? "border-brand bg-brand/5 font-medium text-brand"
-                          : "border-slate-200 text-slate-600")
-                      }
-                    >
-                      {m}
-                    </button>
-                  ))}
+                  <ul className="max-h-48 overflow-y-auto py-1">
+                    {filteredOptions.map((opt) => {
+                      const checked = formSelectedKeys.includes(opt.key);
+                      return (
+                        <li key={opt.key}>
+                          <label className="flex cursor-pointer items-start gap-2.5 px-3 py-2 text-sm hover:bg-brand/5">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleKey(opt.key)}
+                              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+                            />
+                            <span className="min-w-0 leading-snug text-navy">{opt.label}</span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                    {filteredOptions.length === 0 && (
+                      <li className="px-3 py-4 text-center text-sm text-slate-400">
+                        No matching Owner/Renter
+                      </li>
+                    )}
+                  </ul>
                 </div>
-              </div>
-              <label className="block text-xs font-semibold text-slate-600">
-                Payment Date
-                <input
-                  type="date"
-                  value={formDate}
-                  onChange={(e) => onDateChange(e.target.value)}
-                  disabled={soldBlocked}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
-                />
-              </label>
-              <label className="block text-xs font-semibold text-slate-600">
-                Notes
-                <input
-                  type="text"
-                  value={formNotes}
-                  onChange={(e) => onNotesChange(e.target.value)}
-                  disabled={soldBlocked}
-                  placeholder="Notes (optional)"
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
-                />
-              </label>
-            </>
-          ) : (
-            <>
-              <label className="block text-xs font-semibold text-slate-600">
-                Builder Name
-                <input
-                  type="text"
-                  value={formBuilderName}
-                  onChange={(e) => onBuilderNameChange(e.target.value)}
-                  disabled={formUnsoldAllPaid}
-                  placeholder="Builder / developer name"
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
-                />
-              </label>
-
-              <label className="block text-xs font-semibold text-slate-600">
-                Amount
-                <input
-                  type="number"
-                  value={formAmount}
-                  onChange={(e) => onAmountChange(Number(e.target.value))}
-                  disabled={unsoldBlocked}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
-                />
-              </label>
-
-              <div>
-                <div className="mb-1.5 text-xs font-semibold text-slate-600">Payment Method</div>
-                <div className="flex flex-wrap gap-2">
-                  {(["cash", "bank", "upi", "cheque"] as const).map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      disabled={unsoldBlocked}
-                      onClick={() => onModeChange(m)}
-                      className={
-                        "min-w-[4.5rem] flex-1 rounded-xl border px-3 py-2 text-sm capitalize disabled:opacity-50 " +
-                        (formMode === m
-                          ? "border-brand bg-brand/5 font-medium text-brand"
-                          : "border-slate-200 text-slate-600")
-                      }
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <label className="block text-xs font-semibold text-slate-600">
-                Payment Date
-                <input
-                  type="date"
-                  value={formDate}
-                  onChange={(e) => onDateChange(e.target.value)}
-                  disabled={unsoldBlocked}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
-                />
-              </label>
-
-              <label className="block text-xs font-semibold text-slate-600">
-                Notes
-                <input
-                  type="text"
-                  value={formNotes}
-                  onChange={(e) => onNotesChange(e.target.value)}
-                  disabled={unsoldBlocked}
-                  placeholder="Notes (optional)"
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
-                />
-              </label>
-
-              {formPurposeId && formUnsoldAllPaid && (
-                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                  All unsold flats are already paid for this purpose.
-                </p>
               )}
-            </>
+            </div>
+
+            {selectedOptions.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {selectedOptions.map((opt) => (
+                  <span
+                    key={opt.key}
+                    className="inline-flex max-w-full items-center gap-1 rounded-full border border-brand/20 bg-brand/5 px-2.5 py-1 text-[11px] font-medium text-brand"
+                  >
+                    <span className="truncate">{opt.label}</span>
+                    <button
+                      type="button"
+                      disabled={formSaving}
+                      onClick={() => removeKey(opt.key)}
+                      className="shrink-0 text-brand/70 hover:text-brand"
+                      aria-label={`Remove ${opt.label}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {formPurposeId && formAllPaid && (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              No pending sold flats with owners for this purpose.
+            </p>
           )}
+
+          <label className="block text-xs font-semibold text-slate-600">
+            Amount (Per Flat)
+            <input
+              type="number"
+              value={formAmount}
+              onChange={(e) => onAmountChange(Number(e.target.value))}
+              disabled={soldBlocked}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
+            />
+          </label>
+          <div>
+            <div className="mb-1.5 text-xs font-semibold text-slate-600">Payment Method</div>
+            <div className="flex flex-wrap gap-2">
+              {(["cash", "bank", "upi", "cheque"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  disabled={soldBlocked}
+                  onClick={() => onModeChange(m)}
+                  className={
+                    "min-w-[4.5rem] flex-1 rounded-xl border px-3 py-2 text-sm capitalize disabled:opacity-50 " +
+                    (formMode === m
+                      ? "border-brand bg-brand/5 font-medium text-brand"
+                      : "border-slate-200 text-slate-600")
+                  }
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="block text-xs font-semibold text-slate-600">
+            Payment Date
+            <input
+              type="date"
+              value={formDate}
+              onChange={(e) => onDateChange(e.target.value)}
+              disabled={soldBlocked}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
+            />
+          </label>
+          <label className="block text-xs font-semibold text-slate-600">
+            Notes
+            <input
+              type="text"
+              value={formNotes}
+              onChange={(e) => onNotesChange(e.target.value)}
+              disabled={soldBlocked}
+              placeholder="Notes (optional)"
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand disabled:bg-slate-50 disabled:opacity-60"
+            />
+          </label>
 
           {error && (
             <p
@@ -508,10 +382,10 @@ export default function CollectionModal({
           <button
             type="button"
             onClick={onSave}
-            disabled={isSold ? !canSaveSold : !canSaveUnsold}
+            disabled={!canSaveSold}
             className="w-full rounded-xl bg-navy py-2.5 text-sm font-medium text-white disabled:opacity-70"
           >
-            {formSaving ? "Saving…" : isSold ? "Save collection" : "Save builder payment"}
+            {formSaving ? "Saving…" : "Save collection"}
           </button>
         </div>
       </div>

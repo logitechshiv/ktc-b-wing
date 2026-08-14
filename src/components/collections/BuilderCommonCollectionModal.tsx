@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { inr } from "@/lib/format";
 import { formField, formSelect } from "@/lib/form-styles";
 import type { PaymentMode } from "@/lib/payments-api";
+import { BUILDER_MONTHLY_COLLECTION_LABEL } from "@/lib/common-expense-constants";
+import { displayExpenseTitle } from "@/lib/expense-utils";
 import {
   readCommonExpenseSplit,
   type CommonExpenseSplitStats,
@@ -47,7 +49,6 @@ interface Props {
   error: string | null;
   onClose: () => void;
   onSubmit: (data: BuilderCommonCollectionFormData) => Promise<void>;
-  /** Switch back to Member collection form */
   onSwitchToMember?: () => void;
 }
 
@@ -64,7 +65,6 @@ export default function BuilderCommonCollectionModal({
   const now = useMemo(() => new Date(), []);
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [expenseCategory, setExpenseCategory] = useState("");
   const [amount, setAmount] = useState(0);
   const [paymentDate, setPaymentDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
@@ -84,7 +84,6 @@ export default function BuilderCommonCollectionModal({
     if (mode === "edit" && initial) {
       setMonth(initial.month);
       setYear(initial.year);
-      setExpenseCategory(initial.expenseCategory);
       setAmount(initial.amount);
       setPaymentDate(initial.paymentDate || new Date().toISOString().slice(0, 10));
       setPaymentMode(initial.paymentMode);
@@ -95,7 +94,6 @@ export default function BuilderCommonCollectionModal({
       const y = now.getFullYear();
       setMonth(m);
       setYear(y);
-      setExpenseCategory("");
       setAmount(0);
       setPaymentDate(new Date().toISOString().slice(0, 10));
       setPaymentMode("cash");
@@ -110,10 +108,32 @@ export default function BuilderCommonCollectionModal({
     setSplitLoading(true);
     readCommonExpenseSplit(month, year, { force: true })
       .then((data) => {
-        if (!cancelled) setSplit(data);
+        if (cancelled) return;
+        setSplit(data);
+        const pending = Math.round(data.builderPending);
+        if (mode === "edit" && initial && initial.month === month && initial.year === year) {
+          setAmount(Math.round(initial.amount));
+          setNotes(initial.notes || "");
+        } else {
+          setAmount(pending > 0 ? pending : 0);
+          const autoNotes = (data.expenseItems || [])
+            .map((item) => {
+              const title = displayExpenseTitle(item.titleGujarati, item.title);
+              return `${item.category} : ${title}`;
+            })
+            .filter(Boolean)
+            .join("\n");
+          setNotes(autoNotes);
+        }
       })
       .catch(() => {
-        if (!cancelled) setSplit(emptyCommonExpenseSplit(month, year));
+        if (!cancelled) {
+          setSplit(emptyCommonExpenseSplit(month, year));
+          if (mode === "add") {
+            setAmount(0);
+            setNotes("");
+          }
+        }
       })
       .finally(() => {
         if (!cancelled) setSplitLoading(false);
@@ -121,34 +141,12 @@ export default function BuilderCommonCollectionModal({
     return () => {
       cancelled = true;
     };
-  }, [open, month, year]);
+  }, [open, month, year, mode, initial]);
 
-  const categoryOptions = useMemo(() => {
-    const fromSplit = split.categories.map((c) => c.category);
-    const included = split.includedCategories;
-    const set = new Set([...fromSplit, ...included].filter(Boolean));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [split]);
-
-  useEffect(() => {
-    if (!open || expenseCategory) return;
-    if (categoryOptions.length === 1) setExpenseCategory(categoryOptions[0]);
-  }, [open, expenseCategory, categoryOptions]);
-
-  const selectedCategoryShare = useMemo(() => {
-    if (!expenseCategory) return null;
-    return (
-      split.categories.find(
-        (c) => c.category.toLowerCase() === expenseCategory.toLowerCase()
-      ) || null
-    );
-  }, [split.categories, expenseCategory]);
-
-  const categoryPending = selectedCategoryShare
-    ? mode === "edit" && initial && initial.expenseCategory === expenseCategory
-      ? selectedCategoryShare.pending + (Number(initial.amount) || 0)
-      : selectedCategoryShare.pending
-    : 0;
+  const monthPending =
+    mode === "edit" && initial && initial.month === month && initial.year === year
+      ? Math.round(split.builderPending) + Math.round(Number(initial.amount) || 0)
+      : Math.round(split.builderPending);
 
   const years = useMemo(() => {
     const set = new Set(split.years.length ? split.years : [year]);
@@ -162,25 +160,25 @@ export default function BuilderCommonCollectionModal({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setLocalError(null);
-    if (!expenseCategory.trim()) {
-      setLocalError("Expense Category is required");
-      return;
-    }
     if (!amount || amount <= 0) {
       setLocalError("Amount must be greater than 0");
       return;
     }
-    if (categoryPending > 0 && Math.round(amount) > Math.round(categoryPending)) {
+    if (monthPending > 0 && Math.round(amount) > monthPending) {
       setLocalError(
-        `Amount exceeds Builder Pending for this category (pending ${inr(Math.round(categoryPending))})`
+        `Amount exceeds Builder Pending for this month (pending ${inr(monthPending)})`
       );
+      return;
+    }
+    if (monthPending <= 0 && mode === "add") {
+      setLocalError("No Builder Pending for this month");
       return;
     }
     await onSubmit({
       month,
       year,
-      expenseCategory: expenseCategory.trim(),
-      amount,
+      expenseCategory: BUILDER_MONTHLY_COLLECTION_LABEL,
+      amount: Math.round(amount),
       paymentDate,
       paymentMode,
       referenceNumber: referenceNumber.trim(),
@@ -190,6 +188,7 @@ export default function BuilderCommonCollectionModal({
 
   const displayError = localError || error;
   const field = formField;
+  const monthLabel = MONTHS.find((m) => m.value === month)?.label ?? "";
 
   return (
     <div
@@ -207,7 +206,7 @@ export default function BuilderCommonCollectionModal({
               {mode === "add" ? "Add Collection" : "Edit Builder Collection"}
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              Builder payment against Monthly Common Expense Share
+              Builder payment for monthly Common Expense Share
             </p>
           </div>
           <button
@@ -273,43 +272,42 @@ export default function BuilderCommonCollectionModal({
             </label>
           </div>
 
-          <label className="block text-xs font-semibold text-slate-600">
-            Expense Category <span className="text-rose-500">*</span>
-            <select
-              value={expenseCategory}
-              onChange={(e) => setExpenseCategory(e.target.value)}
-              className={formSelect}
-              required
-              disabled={saving || splitLoading}
-            >
-              <option value="">
-                {splitLoading ? "Loading categories…" : "Select category…"}
-              </option>
-              {categoryOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-
           <div className="rounded-xl bg-orange-50 px-3.5 py-3 text-[11px] leading-relaxed text-orange-800">
             <div className="font-semibold">
-              Builder Share (month): {splitLoading ? "…" : inr(Math.round(split.builderShare))}
+              {monthLabel} {year} — Builder Share:{" "}
+              {splitLoading ? "…" : inr(Math.round(split.builderShare))}
             </div>
             <div className="mt-1">
               Collected: {splitLoading ? "…" : inr(Math.round(split.builderCollected))} · Pending:{" "}
-              {splitLoading ? "…" : inr(Math.round(split.builderPending))}
+              {splitLoading ? "…" : inr(monthPending)}
             </div>
-            {selectedCategoryShare ? (
-              <div className="mt-1.5 border-t border-orange-200/80 pt-1.5">
-                <span className="font-semibold">{selectedCategoryShare.category}</span>
-                {" — "}
-                Share {inr(Math.round(selectedCategoryShare.builderShare))} · Pending{" "}
-                {inr(Math.round(categoryPending))}
-              </div>
-            ) : null}
+            <p className="mt-1.5 text-orange-700/80">
+              Amount auto-fills with remaining Builder Pending for this month.
+            </p>
           </div>
+
+          {/* {!splitLoading && split.expenseItems.length > 0 ? (
+            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-3">
+              <div className="text-xs font-semibold text-slate-600">
+                Included common expenses ({monthLabel} {year})
+              </div>
+              <ul className="mt-2 space-y-2">
+                {split.expenseItems.map((item, idx) => {
+                  const title = displayExpenseTitle(item.titleGujarati, item.title);
+                  return (
+                    <li key={`${item.category}-${idx}`} className="text-[11px] leading-snug text-slate-700">
+                      <span className="font-semibold text-navy">{item.category}</span>
+                      <span className="text-slate-400"> : </span>
+                      <span>{title}</span>
+                      <span className="ml-1 tabular-nums text-slate-500">
+                        ({inr(Math.round(item.amount))})
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null} */}
 
           <label className="block text-xs font-semibold text-slate-600">
             Amount <span className="text-rose-500">*</span>
@@ -322,7 +320,7 @@ export default function BuilderCommonCollectionModal({
               onChange={(e) => setAmount(Number(e.target.value))}
               className={field}
               required
-              disabled={saving}
+              disabled={saving || splitLoading}
             />
           </label>
 
@@ -399,7 +397,7 @@ export default function BuilderCommonCollectionModal({
           </button>
           <button
             type="submit"
-            disabled={saving || !expenseCategory || amount <= 0}
+            disabled={saving || splitLoading || amount <= 0 || (mode === "add" && monthPending <= 0)}
             className="rounded-xl bg-black px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
           >
             {saving

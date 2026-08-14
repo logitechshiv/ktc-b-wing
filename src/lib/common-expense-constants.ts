@@ -7,6 +7,9 @@ export const COMMON_EXPENSE_TOTAL_FLATS = 52;
  */
 export const KIRAN3_SOCIETY_ADVANCE_CATEGORY = "KIRAN 3 Society Advance";
 
+/** Stored label for month-level builder common collections (not expense-category based). */
+export const BUILDER_MONTHLY_COLLECTION_LABEL = "Builder Collection";
+
 /**
  * Legacy seed defaults used only when migrating categories that are missing
  * `includeInCommonExpense`. New/updated values come from MongoDB.

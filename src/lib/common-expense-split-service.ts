@@ -26,6 +26,13 @@ export interface CommonExpenseCategoryShare {
   pending: number;
 }
 
+export interface CommonExpenseItemLine {
+  category: string;
+  title: string;
+  titleGujarati: string;
+  amount: number;
+}
+
 export interface CommonExpenseSplitResult {
   month: number;
   year: number;
@@ -41,6 +48,7 @@ export interface CommonExpenseSplitResult {
   builderPending: number;
   builderStatus: BuilderCollectionStatus;
   categories: CommonExpenseCategoryShare[];
+  expenseItems: CommonExpenseItemLine[];
   years: number[];
   includedCategories: string[];
   excludedCategories: string[];
@@ -75,7 +83,7 @@ export async function getCommonExpenseSplit(
           ],
         },
       },
-      { category: 1, amount: 1 }
+      { category: 1, amount: 1, expenseTitle: 1, expenseTitleGujarati: 1, expenseDate: 1 }
     )
       .lean()
       .exec(),
@@ -93,6 +101,7 @@ export async function getCommonExpenseSplit(
   ]);
 
   const categoryTotals = new Map<string, { label: string; total: number }>();
+  const expenseItems: CommonExpenseItemLine[] = [];
   let totalCommonExpense = 0;
   let expenseCount = 0;
 
@@ -104,16 +113,25 @@ export async function getCommonExpenseSplit(
     totalCommonExpense += amount;
     expenseCount += 1;
     const key = normalizeCategoryName(category);
+    const label =
+      includedCategories.find((c) => normalizeCategoryName(c) === key) ||
+      category.trim();
     const prev = categoryTotals.get(key);
     if (prev) {
       prev.total += amount;
     } else {
-      const label =
-        includedCategories.find((c) => normalizeCategoryName(c) === key) ||
-        category.trim();
       categoryTotals.set(key, { label, total: amount });
     }
+    expenseItems.push({
+      category: label,
+      title: String((doc as { expenseTitle?: string }).expenseTitle || "").trim(),
+      titleGujarati: String(
+        (doc as { expenseTitleGujarati?: string }).expenseTitleGujarati || ""
+      ).trim(),
+      amount,
+    });
   }
+  expenseItems.sort((a, b) => b.amount - a.amount || a.category.localeCompare(b.category));
 
   if (!Number.isFinite(totalCommonExpense) || totalCommonExpense < 0) {
     totalCommonExpense = 0;
@@ -197,6 +215,7 @@ export async function getCommonExpenseSplit(
     builderPending,
     builderStatus: computeBuilderStatus(builderShare, builderCollected),
     categories,
+    expenseItems,
     years,
     includedCategories,
     excludedCategories,

@@ -45,7 +45,6 @@ import EditCollectionModal from "@/components/collections/EditCollectionModal";
 import BuilderCommonCollectionModal, {
   type BuilderCommonCollectionFormData,
 } from "@/components/collections/BuilderCommonCollectionModal";
-import { BuilderCommonCollectionsPanel } from "@/components/collections/BuilderCommonCollectionsPanel";
 import {
   createBuilderCommonCollectionClient,
   updateBuilderCommonCollectionClient,
@@ -195,8 +194,10 @@ export default function CollectionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  /** Accordion — only one purpose open at a time; null = all collapsed */
-  const [expandedPurposeId, setExpandedPurposeId] = useState<string | null>(null);
+  /** Accordion — keep selected purpose open by default */
+  const [expandedPurposeId, setExpandedPurposeId] = useState<string | null>(
+    bootstrap.firstId || null
+  );
   const appliedNotificationDeepLinkRef = useRef(false);
 
   const [showForm, setShowForm] = useState(false);
@@ -251,7 +252,6 @@ export default function CollectionsPage() {
     useState<BuilderCommonCollectionRecord | null>(null);
   const [builderSaving, setBuilderSaving] = useState(false);
   const [builderModalError, setBuilderModalError] = useState<string | null>(null);
-  const [builderPanelRefresh, setBuilderPanelRefresh] = useState(0);
 
   /** Filter-bar summary + pending sold flats for the selected Purpose only */
   const [filterDetails, setFilterDetails] = useState<PurposeDetails | null>(() =>
@@ -500,6 +500,12 @@ export default function CollectionsPage() {
     purposeFilterId ? p.id === purposeFilterId : p.id === firstPurpose?.id
   );
 
+  /** Selected purpose accordion stays open (filter shows one purpose at a time). */
+  useEffect(() => {
+    if (!selectedPurposeId) return;
+    setExpandedPurposeId(selectedPurposeId);
+  }, [selectedPurposeId]);
+
   const hasFilters =
     flatQ.trim() !== "" ||
     modeFilter !== "all" ||
@@ -595,7 +601,7 @@ export default function CollectionsPage() {
     });
   }
 
-  /** Load details when an accordion opens (collapsed by default). */
+  /** Load details when an accordion opens (first purpose open by default). */
   useEffect(() => {
     if (!expandedPurposeId) {
       setPurposeDetails(null);
@@ -836,7 +842,6 @@ export default function CollectionsPage() {
         setSuccess("Builder collection added.");
       }
       notifyDataChanged("payment");
-      setBuilderPanelRefresh((n) => n + 1);
       setBuilderModalOpen(false);
       setEditingBuilderCollection(null);
     } catch (e) {
@@ -1237,14 +1242,7 @@ export default function CollectionsPage() {
         </div>
       )}
 
-      <BuilderCommonCollectionsPanel
-        isSuperAdmin={isSuperAdmin}
-        refreshKey={builderPanelRefresh}
-        onAdd={() => openBuilderCollectForm()}
-        onEdit={(row) => openBuilderCollectForm(row)}
-      />
-
-      {/* Purpose accordions — collapsed by default; only one open at a time */}
+      {/* Purpose accordions — first purpose open by default; only one open at a time */}
       <div className="space-y-3">
         {visiblePurposes.map((purpose) => {
           const isOpen = expandedPurposeId === purpose.id;

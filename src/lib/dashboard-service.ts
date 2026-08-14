@@ -4,6 +4,7 @@ import Payment from "@/models/Payment";
 import Expense from "@/models/Expense";
 import Flat from "@/models/Flat";
 import Vehicle from "@/models/Vehicle";
+import BuilderCommonCollection from "@/models/BuilderCommonCollection";
 import { serializeExpense } from "@/lib/expense-utils";
 
 export interface ExpenseByCategory {
@@ -81,6 +82,19 @@ function modeTotal(
     (s, r) => (String(r._id || "").toLowerCase() === key ? s + (r.total || 0) : s),
     0
   );
+}
+
+/** Merge two mode-total aggregates (e.g. purpose payments + builder common collections). */
+function mergeModeTotals(
+  a: { _id: string | null; total: number }[],
+  b: { _id: string | null; total: number }[]
+): { _id: string | null; total: number }[] {
+  const map = new Map<string, number>();
+  for (const row of [...a, ...b]) {
+    const key = String(row._id || "").toLowerCase() || "cash";
+    map.set(key, (map.get(key) || 0) + (Number(row.total) || 0));
+  }
+  return Array.from(map.entries()).map(([_id, total]) => ({ _id, total }));
 }
 
 /**
@@ -166,15 +180,30 @@ const RECEIVED_PAYMENT_PIPELINE: PipelineStage[] = [
 ];
 
 /**
- * Aggregated dashboard stats from payments, expenses, flats, vehicles.
+ * Aggregated dashboard stats from payments, builder common collections, expenses, flats, vehicles.
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
   await connectDB();
 
-  const [paymentAgg, expenseAgg, expenseByCategoryAgg, recentExpenseDocs, flatAgg, vehicleAgg] =
-    await Promise.all([
+  const [
+    purposePaymentAgg,
+    builderCommonAgg,
+    expenseAgg,
+    expenseByCategoryAgg,
+    recentExpenseDocs,
+    flatAgg,
+    vehicleAgg,
+  ] = await Promise.all([
       Payment.aggregate<{ _id: string | null; total: number }>([
         ...RECEIVED_PAYMENT_PIPELINE,
+      ]).exec(),
+      BuilderCommonCollection.aggregate<{ _id: string | null; total: number }>([
+        {
+          $group: {
+            _id: "$paymentMode",
+            total: { $sum: "$amount" },
+          },
+        },
       ]).exec(),
       Expense.aggregate<{ _id: string | null; total: number }>([
         {
@@ -218,6 +247,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         },
       ]).exec(),
     ]);
+
+  const paymentAgg = mergeModeTotals(purposePaymentAgg, builderCommonAgg);
 
   const totalCollection = paymentAgg.reduce((s, r) => s + (r.total || 0), 0);
   const totalExpense = expenseAgg.reduce((s, r) => s + (r.total || 0), 0);

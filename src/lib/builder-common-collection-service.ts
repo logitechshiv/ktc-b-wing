@@ -4,6 +4,7 @@ import Flat from "@/models/Flat";
 import BuilderCommonCollection from "@/models/BuilderCommonCollection";
 import { PAYMENT_MODES, type DbPaymentMode } from "@/models/Payment";
 import {
+  BUILDER_MONTHLY_COLLECTION_LABEL,
   COMMON_EXPENSE_TOTAL_FLATS,
   allocateWholeRupeeShares,
   computePerFlatShare,
@@ -254,7 +255,6 @@ function validateInput(body: Record<string, unknown>): {
 } | { ok: false; message: string } {
   const month = Number(body.month);
   const year = Number(body.year);
-  const expenseCategory = String(body.expenseCategory ?? body.category ?? "").trim();
   const amount = Number(body.amount);
   const paymentMode = String(body.paymentMode ?? body.paymentMethod ?? "")
     .trim()
@@ -265,15 +265,16 @@ function validateInput(body: Record<string, unknown>): {
   const paymentDate = paymentDateRaw.slice(0, 10);
   const referenceNumber = String(body.referenceNumber ?? body.reference ?? "").trim();
   const notes = String(body.notes ?? "").trim();
+  // Category is no longer collected in UI — month/year pending only
+  const expenseCategory =
+    String(body.expenseCategory ?? body.category ?? "").trim() ||
+    BUILDER_MONTHLY_COLLECTION_LABEL;
 
   if (!Number.isFinite(month) || month < 1 || month > 12) {
     return { ok: false, message: "Valid month is required (1–12)" };
   }
   if (!Number.isFinite(year) || year < 1970 || year > 2100) {
     return { ok: false, message: "Valid year is required" };
-  }
-  if (!expenseCategory) {
-    return { ok: false, message: "Expense Category is required" };
   }
   if (!Number.isFinite(amount) || amount <= 0) {
     return { ok: false, message: "Amount must be greater than 0" };
@@ -300,47 +301,76 @@ function validateInput(body: Record<string, unknown>): {
   };
 }
 
-async function resolveCanonicalCategory(name: string): Promise<string | null> {
-  const included = await getIncludedCommonExpenseCategoryNames();
-  const key = normalizeCategoryName(name);
-  const hit = included.find((c) => normalizeCategoryName(c) === key);
-  return hit || null;
-}
-
-async function assertWithinCategoryPending(params: {
+/** Month Builder Share (whole rupees) and remaining pending. */
+export async function getMonthBuilderPending(params: {
   month: number;
   year: number;
-  expenseCategory: string;
+  excludeId?: string;
+}): Promise<{ share: number; collected: number; pending: number }> {
+  await connectDB();
+  const included = await getIncludedCommonExpenseCategoryNames();
+  const [monthDocs, unsoldFlats, collected] = await Promise.all([
+    Expense.find(
+      {
+        $expr: {
+          $and: [
+            { $eq: [{ $year: "$expenseDate" }, params.year] },
+            { $eq: [{ $month: "$expenseDate" }, params.month] },
+          ],
+        },
+      },
+      { category: 1, amount: 1 }
+    )
+      .lean()
+      .exec(),
+    Flat.countDocuments({ status: "available" }),
+    sumBuilderCollected({
+      month: params.month,
+      year: params.year,
+      excludeId: params.excludeId,
+    }),
+  ]);
+
+  let totalCommonExpense = 0;
+  for (const doc of monthDocs) {
+    const category = String((doc as { category?: string }).category || "");
+    if (!categoryNameMatchesIncluded(category, included)) continue;
+    const amount = Number((doc as { amount?: number }).amount) || 0;
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    totalCommonExpense += amount;
+  }
+
+  const unsold = Number(unsoldFlats) || 0;
+  const perFlat = computePerFlatShare(totalCommonExpense, COMMON_EXPENSE_TOTAL_FLATS);
+  const share = Math.round(perFlat * unsold);
+  const collectedRounded = Math.round(collected);
+  return {
+    share,
+    collected: collectedRounded,
+    pending: Math.max(0, share - collectedRounded),
+  };
+}
+
+async function assertWithinMonthPending(params: {
+  month: number;
+  year: number;
   amount: number;
   excludeId?: string;
 }): Promise<{ ok: true; pending: number; share: number } | { ok: false; message: string }> {
-  const shareRow = await getCategoryBuilderShare(
-    params.month,
-    params.year,
-    params.expenseCategory
-  );
-  if (!shareRow || shareRow.builderShare <= 0) {
+  const row = await getMonthBuilderPending(params);
+  if (row.share <= 0) {
     return {
       ok: false,
-      message: `No builder share for category "${params.expenseCategory}" in this month`,
+      message: "No Builder Share for this month — add common expenses first",
     };
   }
-
-  const already = await sumBuilderCollected({
-    month: params.month,
-    year: params.year,
-    category: shareRow.category,
-    excludeId: params.excludeId,
-  });
-  const pending = Math.max(0, shareRow.builderShare - already);
-  // Compare in whole rupees — share is often fractional (total/52) while UI shows rounded amounts
-  if (Math.round(params.amount) > Math.round(pending)) {
+  if (Math.round(params.amount) > row.pending) {
     return {
       ok: false,
-      message: `Amount exceeds Builder Pending for ${shareRow.category} (pending ₹${Math.round(pending).toLocaleString("en-IN")}, share ₹${Math.round(shareRow.builderShare).toLocaleString("en-IN")})`,
+      message: `Amount exceeds Builder Pending (pending ₹${row.pending.toLocaleString("en-IN")}, share ₹${row.share.toLocaleString("en-IN")})`,
     };
   }
-  return { ok: true, pending, share: shareRow.builderShare };
+  return { ok: true, pending: row.pending, share: row.share };
 }
 
 export async function createBuilderCommonCollection(
@@ -350,18 +380,13 @@ export async function createBuilderCommonCollection(
   const validated = validateInput(body);
   if (!validated.ok) throw new Error(validated.message);
 
-  const canonical = await resolveCanonicalCategory(validated.data.expenseCategory);
-  if (!canonical) {
-    throw new Error(
-      "Expense Category must be marked Include in Common Expense"
-    );
-  }
-
-  const data = { ...validated.data, expenseCategory: canonical };
-  const check = await assertWithinCategoryPending({
+  const data = {
+    ...validated.data,
+    expenseCategory: BUILDER_MONTHLY_COLLECTION_LABEL,
+  };
+  const check = await assertWithinMonthPending({
     month: data.month,
     year: data.year,
-    expenseCategory: data.expenseCategory,
     amount: data.amount,
   });
   if (!check.ok) throw new Error(check.message);
@@ -389,18 +414,13 @@ export async function updateBuilderCommonCollection(
   const validated = validateInput(body);
   if (!validated.ok) throw new Error(validated.message);
 
-  const canonical = await resolveCanonicalCategory(validated.data.expenseCategory);
-  if (!canonical) {
-    throw new Error(
-      "Expense Category must be marked Include in Common Expense"
-    );
-  }
-
-  const data = { ...validated.data, expenseCategory: canonical };
-  const check = await assertWithinCategoryPending({
+  const data = {
+    ...validated.data,
+    expenseCategory: BUILDER_MONTHLY_COLLECTION_LABEL,
+  };
+  const check = await assertWithinMonthPending({
     month: data.month,
     year: data.year,
-    expenseCategory: data.expenseCategory,
     amount: data.amount,
     excludeId: id,
   });

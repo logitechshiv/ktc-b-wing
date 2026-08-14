@@ -18,12 +18,6 @@ import { CacheKeys, peekCache } from "@/lib/data-cache";
 import ExpenseRow from "@/components/ExpenseRow";
 import SummaryTile from "@/components/SummaryTile";
 import NoticeCard from "@/components/NoticeCard";
-import {
-  emptyCommonExpenseSplit,
-  readCommonExpenseSplit,
-  type CommonExpenseSplitStats,
-} from "@/lib/common-expense-split-api";
-import { readBuilderCommonCollections, type BuilderCommonCollectionRecord } from "@/lib/builder-common-collections-api";
 
 const Kiran3CommonCard = dynamic(() => import("@/components/Kiran3CommonCard"), {
   loading: () => (
@@ -72,33 +66,9 @@ export default function DashboardHome() {
   );
   const [noticesLoading, setNoticesLoading] = useState(!cachedNotices);
   const [openNoticeId, setOpenNoticeId] = useState<string | null>(null);
-  const [builderMonth, setBuilderMonth] = useState(() => new Date().getMonth() + 1);
-  const [builderYear, setBuilderYear] = useState(() => new Date().getFullYear());
-  const [builderSplit, setBuilderSplit] = useState<CommonExpenseSplitStats>(() => {
-    const n = new Date();
-    return emptyCommonExpenseSplit(n.getMonth() + 1, n.getFullYear());
-  });
-  const [builderRecent, setBuilderRecent] = useState<BuilderCommonCollectionRecord[]>([]);
-  const [builderLoading, setBuilderLoading] = useState(true);
 
   const mock = mockStats();
   const pending = mock.dues.filter((d) => d.pending > 0);
-
-  const loadBuilderSummary = useCallback(async () => {
-    try {
-      const [split, recent] = await Promise.all([
-        readCommonExpenseSplit(builderMonth, builderYear, { force: true }),
-        readBuilderCommonCollections({ month: builderMonth, year: builderYear, limit: 5, force: true }),
-      ]);
-      setBuilderSplit(split);
-      setBuilderRecent(recent);
-    } catch {
-      setBuilderSplit(emptyCommonExpenseSplit(builderMonth, builderYear));
-      setBuilderRecent([]);
-    } finally {
-      setBuilderLoading(false);
-    }
-  }, [builderMonth, builderYear]);
 
   const load = useCallback(async () => {
     try {
@@ -126,11 +96,6 @@ export default function DashboardHome() {
   }, []);
 
   useEffect(() => {
-    setBuilderLoading(true);
-    void loadBuilderSummary();
-  }, [loadBuilderSummary]);
-
-  useEffect(() => {
     void load();
     void loadNotices();
     let timer: number | undefined;
@@ -141,55 +106,15 @@ export default function DashboardHome() {
         if (source === "notice" || source === "unknown") {
           void loadNotices();
         }
-        if (
-          source === "payment" ||
-          source === "expense" ||
-          source === "flat" ||
-          source === "unknown"
-        ) {
-          void loadBuilderSummary();
-        }
       }, 200);
     });
     return () => {
       window.clearTimeout(timer);
       unsub();
     };
-  }, [load, loadNotices, loadBuilderSummary]);
+  }, [load, loadNotices]);
 
   const recentExpenses = dash.recentExpenses;
-  const builderStatusLabel =
-    builderSplit.builderStatus === "fully_paid"
-      ? "Fully Paid"
-      : builderSplit.builderStatus === "partially_paid"
-        ? "Partially Paid"
-        : "Pending";
-  const builderStatusClass =
-    builderSplit.builderStatus === "fully_paid"
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : builderSplit.builderStatus === "partially_paid"
-        ? "bg-amber-50 text-amber-800 border-amber-200"
-        : "bg-slate-50 text-slate-600 border-slate-200";
-  const builderMonthLabel =
-    [
-      "January",
-      "February",
-      "March",
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
-    ][builderMonth - 1] ?? "";
-  const builderYearOptions = (() => {
-    const y = new Date().getFullYear();
-    const set = new Set([y, y - 1, y - 2, y + 1, builderYear, ...builderSplit.years]);
-    return Array.from(set).sort((a, b) => b - a);
-  })();
 
   return (
     <div className="space-y-5">
@@ -419,134 +344,6 @@ export default function DashboardHome() {
           </ul>
         )}
       </section>
-
-      {/* <section className="overflow-hidden rounded-[22px] bg-white shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-[17px] font-bold tracking-tight text-navy">
-                Builder Common Collection
-              </h2>
-              <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
-                Builder
-              </span>
-            </div>
-            <p className="mt-0.5 text-[11px] text-slate-400">
-              {builderMonthLabel} {builderYear} — Share / Collected / Pending
-            </p>
-          </div>
-          <Link href="/collections" className="text-xs font-medium text-brand">
-            Manage →
-          </Link>
-        </div>
-
-        <div className="flex flex-wrap gap-2 border-b border-slate-50 px-4 py-3 sm:px-5">
-          <select
-            value={builderMonth}
-            onChange={(e) => setBuilderMonth(Number(e.target.value))}
-            className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
-          >
-            {[
-              "January",
-              "February",
-              "March",
-              "April",
-              "May",
-              "June",
-              "July",
-              "August",
-              "September",
-              "October",
-              "November",
-              "December",
-            ].map((label, i) => (
-              <option key={label} value={i + 1}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={builderYear}
-            onChange={(e) => setBuilderYear(Number(e.target.value))}
-            className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
-          >
-            {builderYearOptions.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-          {!builderLoading ? (
-            <span
-              className={
-                "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold " +
-                builderStatusClass
-              }
-            >
-              {builderStatusLabel}
-            </span>
-          ) : null}
-        </div>
-
-        <div className="grid grid-cols-1 gap-2 border-b border-slate-50 px-4 py-3 sm:grid-cols-3 sm:px-5">
-          <div className="rounded-xl bg-slate-50 px-3 py-2.5">
-            <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-              Builder Share
-            </div>
-            <div className="mt-0.5 text-sm font-bold tabular-nums text-navy">
-              {builderLoading ? "…" : inr(Math.round(builderSplit.builderShare))}
-            </div>
-          </div>
-          <div className="rounded-xl bg-emerald-50 px-3 py-2.5">
-            <div className="text-[10px] font-medium uppercase tracking-wide text-emerald-700/70">
-              Collected
-            </div>
-            <div className="mt-0.5 text-sm font-bold tabular-nums text-emerald-800">
-              {builderLoading ? "…" : inr(Math.round(builderSplit.builderCollected))}
-            </div>
-          </div>
-          <div className="rounded-xl bg-amber-50 px-3 py-2.5">
-            <div className="text-[10px] font-medium uppercase tracking-wide text-amber-700/70">
-              Pending
-            </div>
-            <div className="mt-0.5 text-sm font-bold tabular-nums text-amber-900">
-              {builderLoading ? "…" : inr(Math.round(builderSplit.builderPending))}
-            </div>
-          </div>
-        </div>
-
-        <div className="px-4 py-3 sm:px-5">
-          {builderLoading ? (
-            <p className="text-xs text-slate-400">Loading…</p>
-          ) : builderRecent.length === 0 ? (
-            <p className="text-xs text-slate-400">No builder collections for this month.</p>
-          ) : (
-            <ul className="space-y-2">
-              {builderRecent.map((row) => (
-                <li
-                  key={row.id}
-                  className="flex items-start justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-sm font-semibold text-navy">{row.expenseCategory}</span>
-                      <span className="rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700">
-                        Builder
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-[11px] text-slate-500">
-                      {row.paymentDate} · {row.paymentMode}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-sm font-bold tabular-nums text-navy">
-                    {inr(Math.round(row.amount))}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section> */}
 
       <CommonExpenseSplit />
 

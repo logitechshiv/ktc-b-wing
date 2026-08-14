@@ -12,6 +12,13 @@ export interface CommonExpenseCategoryShare {
   pending: number;
 }
 
+export interface CommonExpenseItemLine {
+  category: string;
+  title: string;
+  titleGujarati: string;
+  amount: number;
+}
+
 export interface CommonExpenseSplitStats {
   month: number;
   year: number;
@@ -27,6 +34,7 @@ export interface CommonExpenseSplitStats {
   builderPending: number;
   builderStatus: BuilderCollectionStatus;
   categories: CommonExpenseCategoryShare[];
+  expenseItems: CommonExpenseItemLine[];
   years: number[];
   includedCategories: string[];
   excludedCategories: string[];
@@ -51,6 +59,7 @@ export function emptyCommonExpenseSplit(
     builderPending: 0,
     builderStatus: "pending",
     categories: [],
+    expenseItems: [],
     years: [year],
     includedCategories: [],
     excludedCategories: [],
@@ -77,6 +86,21 @@ function mapCategories(raw: unknown): CommonExpenseCategoryShare[] {
       pending: Math.max(0, Number(r.pending) || 0),
     };
   }).filter((c) => c.category);
+}
+
+function mapExpenseItems(raw: unknown): CommonExpenseItemLine[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        category: String(r.category || "").trim(),
+        title: String(r.title || "").trim(),
+        titleGujarati: String(r.titleGujarati || "").trim(),
+        amount: Math.max(0, Number(r.amount) || 0),
+      };
+    })
+    .filter((c) => c.category);
 }
 
 export async function readCommonExpenseSplit(
@@ -133,6 +157,7 @@ export async function readCommonExpenseSplit(
         builderPending,
         builderStatus,
         categories: mapCategories(data.categories),
+        expenseItems: mapExpenseItems(data.expenseItems),
         years: Array.isArray(data.years)
           ? (data.years as number[])
               .map((y) => Number(y))
