@@ -84,7 +84,14 @@ export default function CommonExpenseSplit() {
   useEffect(() => {
     let timer: number | undefined;
     const unsub = subscribeDataChanged((source) => {
-      if (source !== "expense" && source !== "flat" && source !== "unknown") return;
+      if (
+        source !== "expense" &&
+        source !== "flat" &&
+        source !== "payment" &&
+        source !== "unknown"
+      ) {
+        return;
+      }
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         void load(month, year);
@@ -101,8 +108,15 @@ export default function CommonExpenseSplit() {
   const perFlat = Number.isFinite(stats.perFlatShare) ? stats.perFlatShare : 0;
   const sold = Number.isFinite(stats.soldFlats) ? stats.soldFlats : 0;
   const unsold = Number.isFinite(stats.unsoldFlats) ? stats.unsoldFlats : 0;
-  const soldTotal = perFlat * sold;
-  const unsoldTotal = perFlat * unsold;
+  const soldTotal = Number.isFinite(stats.memberShare)
+    ? stats.memberShare
+    : perFlat * sold;
+  const unsoldTotal = Number.isFinite(stats.builderShare)
+    ? stats.builderShare
+    : perFlat * unsold;
+  const builderCollected = Number.isFinite(stats.builderCollected) ? stats.builderCollected : 0;
+  const builderPending = Number.isFinite(stats.builderPending) ? stats.builderPending : 0;
+  const builderStatus = stats.builderStatus || "pending";
   const monthLabel = MONTHS.find((m) => m.value === month)?.label ?? "";
 
   const years = useMemo(() => {
@@ -111,6 +125,13 @@ export default function CommonExpenseSplit() {
     set.add(now.getFullYear());
     return Array.from(set).sort((a, b) => b - a);
   }, [stats.years, year, now]);
+
+  const statusText =
+    builderStatus === "fully_paid"
+      ? "Fully Paid"
+      : builderStatus === "partially_paid"
+        ? "Partially Paid"
+        : "Pending";
 
   return (
     <section className="overflow-hidden rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80 sm:p-5">
@@ -225,11 +246,87 @@ export default function CommonExpenseSplit() {
             />
           </div>
         </div>
+
+        <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-0.5">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-orange-800">
+              Builder collection
+            </div>
+            {/* <span className="rounded-full border border-orange-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-orange-800">
+              {statusText}
+            </span> */}
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="rounded-xl bg-white px-3 py-2.5">
+              <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                Builder Share
+              </div>
+              <div className="mt-0.5 text-sm font-bold tabular-nums text-navy">
+                {loading ? "…" : inr(Math.round(unsoldTotal))}
+              </div>
+            </div>
+            <div className="rounded-xl bg-white px-3 py-2.5">
+              <div className="text-[10px] font-medium uppercase tracking-wide text-emerald-700/70">
+                Collected
+              </div>
+              <div className="mt-0.5 text-sm font-bold tabular-nums text-emerald-800">
+                {loading ? "…" : inr(Math.round(builderCollected))}
+              </div>
+            </div>
+            <div className="rounded-xl bg-white px-3 py-2.5">
+              <div className="text-[10px] font-medium uppercase tracking-wide text-amber-700/70">
+                Pending
+              </div>
+              <div className="mt-0.5 text-sm font-bold tabular-nums text-amber-900">
+                {loading ? "…" : inr(Math.round(builderPending))}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* {!loading && stats.categories.length > 0 ? (
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100">
+          <table className="min-w-full text-left text-[11px]">
+            <thead className="bg-slate-50 text-slate-500">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Category</th>
+                <th className="px-3 py-2 font-semibold tabular-nums">Share</th>
+                <th className="px-3 py-2 font-semibold tabular-nums">Collected</th>
+                <th className="px-3 py-2 font-semibold tabular-nums">Pending</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {stats.categories.map((row) => (
+                <tr key={row.category}>
+                  <td className="max-w-[140px] truncate px-3 py-2 font-medium text-navy">
+                    {row.category}
+                  </td>
+                  <td className="px-3 py-2 tabular-nums text-slate-600">
+                    {inr(Math.round(row.builderShare))}
+                  </td>
+                  <td className="px-3 py-2 tabular-nums text-slate-600">
+                    {inr(Math.round(row.collected))}
+                  </td>
+                  <td className="px-3 py-2 tabular-nums text-slate-600">
+                    {inr(Math.round(row.pending))}
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-slate-50 font-semibold text-navy">
+                <td className="px-3 py-2">Total</td>
+                <td className="px-3 py-2 tabular-nums">{inr(Math.round(unsoldTotal))}</td>
+                <td className="px-3 py-2 tabular-nums">{inr(Math.round(builderCollected))}</td>
+                <td className="px-3 py-2 tabular-nums">{inr(Math.round(builderPending))}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ) : null} */}
 
       <p className="mt-4 rounded-xl bg-slate-50 px-3.5 py-3 text-[11px] leading-relaxed text-slate-500">
         Formula: Common total ÷ {totalFlats} = per flat. Sold share = per flat × {sold}. Builder share = per flat ×{" "}
-        {unsold}.
+        {unsold}. Builder payments do not reduce the common expense total.
       </p>
     </section>
   );

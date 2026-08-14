@@ -3,13 +3,28 @@ import Expense from "@/models/Expense";
 import Flat from "@/models/Flat";
 import {
   COMMON_EXPENSE_TOTAL_FLATS,
+  allocateWholeRupeeShares,
   computePerFlatShare,
+  normalizeCategoryName,
 } from "@/lib/common-expense-constants";
 import {
   categoryNameMatchesIncluded,
   getExcludedCommonExpenseCategoryNames,
   getIncludedCommonExpenseCategoryNames,
 } from "@/lib/expense-category-common";
+import {
+  computeBuilderStatus,
+  sumBuilderCollectedByCategory,
+  type BuilderCollectionStatus,
+} from "@/lib/builder-common-collection-service";
+
+export interface CommonExpenseCategoryShare {
+  category: string;
+  expenseTotal: number;
+  builderShare: number;
+  collected: number;
+  pending: number;
+}
 
 export interface CommonExpenseSplitResult {
   month: number;
@@ -20,6 +35,12 @@ export interface CommonExpenseSplitResult {
   expenseCount: number;
   soldFlats: number;
   unsoldFlats: number;
+  memberShare: number;
+  builderShare: number;
+  builderCollected: number;
+  builderPending: number;
+  builderStatus: BuilderCollectionStatus;
+  categories: CommonExpenseCategoryShare[];
   years: number[];
   includedCategories: string[];
   excludedCategories: string[];
@@ -41,6 +62,7 @@ export async function getCommonExpenseSplit(
     yearRows,
     soldFlats,
     unsoldFlats,
+    collectedByCategory,
   ] = await Promise.all([
     getIncludedCommonExpenseCategoryNames(),
     getExcludedCommonExpenseCategoryNames(),
@@ -67,10 +89,13 @@ export async function getCommonExpenseSplit(
     ]).exec(),
     Flat.countDocuments({ status: "sold" }),
     Flat.countDocuments({ status: "available" }),
+    sumBuilderCollectedByCategory(m, y),
   ]);
 
+  const categoryTotals = new Map<string, { label: string; total: number }>();
   let totalCommonExpense = 0;
   let expenseCount = 0;
+
   for (const doc of monthDocs) {
     const category = String((doc as { category?: string }).category || "");
     if (!categoryNameMatchesIncluded(category, includedCategories)) continue;
@@ -78,6 +103,16 @@ export async function getCommonExpenseSplit(
     if (!Number.isFinite(amount) || amount <= 0) continue;
     totalCommonExpense += amount;
     expenseCount += 1;
+    const key = normalizeCategoryName(category);
+    const prev = categoryTotals.get(key);
+    if (prev) {
+      prev.total += amount;
+    } else {
+      const label =
+        includedCategories.find((c) => normalizeCategoryName(c) === key) ||
+        category.trim();
+      categoryTotals.set(key, { label, total: amount });
+    }
   }
 
   if (!Number.isFinite(totalCommonExpense) || totalCommonExpense < 0) {
@@ -94,6 +129,58 @@ export async function getCommonExpenseSplit(
 
   const totalFlats = COMMON_EXPENSE_TOTAL_FLATS;
   const perFlatShare = computePerFlatShare(totalCommonExpense, totalFlats);
+  const sold = Number(soldFlats) || 0;
+  const unsold = Number(unsoldFlats) || 0;
+  const memberShareExact = perFlatShare * sold;
+  const builderShareExact = perFlatShare * unsold;
+  const builderShare = Math.round(builderShareExact);
+  const memberShare = Math.round(memberShareExact);
+
+  const categoryRows = Array.from(categoryTotals.entries()).map(([key, row]) => {
+    const catPerFlat = computePerFlatShare(row.total, totalFlats);
+    return {
+      key,
+      label: row.label,
+      expenseTotal: row.total,
+      exactBuilderShare: catPerFlat * unsold,
+      collected: collectedByCategory.get(key) || 0,
+    };
+  });
+  categoryRows.sort((a, b) => b.expenseTotal - a.expenseTotal);
+
+  const allocatedShares = allocateWholeRupeeShares(
+    categoryRows.map((r) => r.exactBuilderShare),
+    builderShare
+  );
+
+  const categories: CommonExpenseCategoryShare[] = categoryRows.map((row, i) => {
+    const catBuilderShare = allocatedShares[i] ?? 0;
+    const collected = row.collected;
+    return {
+      category: row.label,
+      expenseTotal: row.expenseTotal,
+      builderShare: catBuilderShare,
+      collected,
+      pending: Math.max(0, catBuilderShare - collected),
+    };
+  });
+
+  // Include included categories with 0 expense but existing collections
+  for (const [key, collected] of collectedByCategory) {
+    if (categories.some((c) => normalizeCategoryName(c.category) === key)) continue;
+    const label =
+      includedCategories.find((c) => normalizeCategoryName(c) === key) || key;
+    categories.push({
+      category: label,
+      expenseTotal: 0,
+      builderShare: 0,
+      collected,
+      pending: 0,
+    });
+  }
+
+  const builderCollected = categories.reduce((s, c) => s + c.collected, 0);
+  const builderPending = Math.max(0, builderShare - builderCollected);
 
   return {
     month: m,
@@ -102,8 +189,14 @@ export async function getCommonExpenseSplit(
     totalFlats,
     perFlatShare,
     expenseCount,
-    soldFlats: Number(soldFlats) || 0,
-    unsoldFlats: Number(unsoldFlats) || 0,
+    soldFlats: sold,
+    unsoldFlats: unsold,
+    memberShare,
+    builderShare,
+    builderCollected,
+    builderPending,
+    builderStatus: computeBuilderStatus(builderShare, builderCollected),
+    categories,
     years,
     includedCategories,
     excludedCategories,

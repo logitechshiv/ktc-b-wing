@@ -1,7 +1,16 @@
 import { COMMON_EXPENSE_TOTAL_FLATS } from "@/lib/common-expense-constants";
 import { CacheKeys, cachedQuery } from "@/lib/data-cache";
+import type { BuilderCollectionStatus } from "@/lib/builder-common-collection-service";
 
 export { COMMON_EXPENSE_TOTAL_FLATS };
+
+export interface CommonExpenseCategoryShare {
+  category: string;
+  expenseTotal: number;
+  builderShare: number;
+  collected: number;
+  pending: number;
+}
 
 export interface CommonExpenseSplitStats {
   month: number;
@@ -12,6 +21,12 @@ export interface CommonExpenseSplitStats {
   expenseCount: number;
   soldFlats: number;
   unsoldFlats: number;
+  memberShare: number;
+  builderShare: number;
+  builderCollected: number;
+  builderPending: number;
+  builderStatus: BuilderCollectionStatus;
+  categories: CommonExpenseCategoryShare[];
   years: number[];
   includedCategories: string[];
   excludedCategories: string[];
@@ -30,6 +45,12 @@ export function emptyCommonExpenseSplit(
     expenseCount: 0,
     soldFlats: 0,
     unsoldFlats: 0,
+    memberShare: 0,
+    builderShare: 0,
+    builderCollected: 0,
+    builderPending: 0,
+    builderStatus: "pending",
+    categories: [],
     years: [year],
     includedCategories: [],
     excludedCategories: [],
@@ -44,42 +65,91 @@ async function parseJson(res: Response) {
   return data;
 }
 
+function mapCategories(raw: unknown): CommonExpenseCategoryShare[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      category: String(r.category || "").trim(),
+      expenseTotal: Math.max(0, Number(r.expenseTotal) || 0),
+      builderShare: Math.max(0, Number(r.builderShare) || 0),
+      collected: Math.max(0, Number(r.collected) || 0),
+      pending: Math.max(0, Number(r.pending) || 0),
+    };
+  }).filter((c) => c.category);
+}
+
 export async function readCommonExpenseSplit(
   month: number,
-  year: number
+  year: number,
+  opts?: { force?: boolean }
 ): Promise<CommonExpenseSplitStats> {
-  return cachedQuery(CacheKeys.commonExpenseSplit(month, year), async () => {
-    const sp = new URLSearchParams({
-      month: String(month),
-      year: String(year),
-    });
-    const res = await fetch(`/api/dashboard/common-expense-split?${sp.toString()}`, {
-      cache: "no-store",
-    });
-    const data = await parseJson(res);
-    const totalCommonExpense = Math.max(0, Number(data.totalCommonExpense) || 0);
-    const totalFlats = COMMON_EXPENSE_TOTAL_FLATS;
-    const perFlatShare = Math.max(0, Number(data.perFlatShare) || 0);
-    return {
-      month: Number(data.month) || month,
-      year: Number(data.year) || year,
-      totalCommonExpense: Number.isFinite(totalCommonExpense) ? totalCommonExpense : 0,
-      totalFlats,
-      perFlatShare: Number.isFinite(perFlatShare) ? perFlatShare : 0,
-      expenseCount: Math.max(0, Number(data.expenseCount) || 0),
-      soldFlats: Math.max(0, Number(data.soldFlats) || 0),
-      unsoldFlats: Math.max(0, Number(data.unsoldFlats) || 0),
-      years: Array.isArray(data.years)
-        ? (data.years as number[])
-            .map((y) => Number(y))
-            .filter((y) => Number.isFinite(y))
-        : [year],
-      includedCategories: Array.isArray(data.includedCategories)
-        ? (data.includedCategories as unknown[]).map((c) => String(c || "").trim()).filter(Boolean)
-        : [],
-      excludedCategories: Array.isArray(data.excludedCategories)
-        ? (data.excludedCategories as unknown[]).map((c) => String(c || "").trim()).filter(Boolean)
-        : [],
-    };
-  });
+  return cachedQuery(
+    CacheKeys.commonExpenseSplit(month, year),
+    async () => {
+      const sp = new URLSearchParams({
+        month: String(month),
+        year: String(year),
+      });
+      const res = await fetch(`/api/dashboard/common-expense-split?${sp.toString()}`, {
+        cache: "no-store",
+      });
+      const data = await parseJson(res);
+      const totalCommonExpense = Math.max(0, Number(data.totalCommonExpense) || 0);
+      const totalFlats = COMMON_EXPENSE_TOTAL_FLATS;
+      const perFlatShare = Math.max(0, Number(data.perFlatShare) || 0);
+      const soldFlats = Math.max(0, Number(data.soldFlats) || 0);
+      const unsoldFlats = Math.max(0, Number(data.unsoldFlats) || 0);
+      const builderShare = Math.max(
+        0,
+        Number(data.builderShare) || perFlatShare * unsoldFlats
+      );
+      const builderCollected = Math.max(0, Number(data.builderCollected) || 0);
+      const builderPending = Math.max(
+        0,
+        Number(data.builderPending) || Math.max(0, builderShare - builderCollected)
+      );
+      const statusRaw = String(data.builderStatus || "pending");
+      const builderStatus: BuilderCollectionStatus =
+        statusRaw === "fully_paid" || statusRaw === "partially_paid"
+          ? statusRaw
+          : "pending";
+
+      return {
+        month: Number(data.month) || month,
+        year: Number(data.year) || year,
+        totalCommonExpense: Number.isFinite(totalCommonExpense) ? totalCommonExpense : 0,
+        totalFlats,
+        perFlatShare: Number.isFinite(perFlatShare) ? perFlatShare : 0,
+        expenseCount: Math.max(0, Number(data.expenseCount) || 0),
+        soldFlats,
+        unsoldFlats,
+        memberShare: Math.max(
+          0,
+          Number(data.memberShare) || perFlatShare * soldFlats
+        ),
+        builderShare,
+        builderCollected,
+        builderPending,
+        builderStatus,
+        categories: mapCategories(data.categories),
+        years: Array.isArray(data.years)
+          ? (data.years as number[])
+              .map((y) => Number(y))
+              .filter((y) => Number.isFinite(y))
+          : [year],
+        includedCategories: Array.isArray(data.includedCategories)
+          ? (data.includedCategories as unknown[])
+              .map((c) => String(c || "").trim())
+              .filter(Boolean)
+          : [],
+        excludedCategories: Array.isArray(data.excludedCategories)
+          ? (data.excludedCategories as unknown[])
+              .map((c) => String(c || "").trim())
+              .filter(Boolean)
+          : [],
+      };
+    },
+    { force: opts?.force }
+  );
 }

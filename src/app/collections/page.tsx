@@ -42,6 +42,15 @@ import CollectionModal, {
   type CollectionFlatTab,
 } from "@/components/collections/CollectionModal";
 import EditCollectionModal from "@/components/collections/EditCollectionModal";
+import BuilderCommonCollectionModal, {
+  type BuilderCommonCollectionFormData,
+} from "@/components/collections/BuilderCommonCollectionModal";
+import { BuilderCommonCollectionsPanel } from "@/components/collections/BuilderCommonCollectionsPanel";
+import {
+  createBuilderCommonCollectionClient,
+  updateBuilderCommonCollectionClient,
+  type BuilderCommonCollectionRecord,
+} from "@/lib/builder-common-collections-api";
 
 function shortPurposeTitle(title: string) {
   return title
@@ -235,6 +244,14 @@ export default function CollectionsPage() {
   /** When true, accordion open skips refetch (details already applied live). */
   const skipDetailsReloadRef = useRef(false);
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+
+  const [builderModalOpen, setBuilderModalOpen] = useState(false);
+  const [builderModalMode, setBuilderModalMode] = useState<"add" | "edit">("add");
+  const [editingBuilderCollection, setEditingBuilderCollection] =
+    useState<BuilderCommonCollectionRecord | null>(null);
+  const [builderSaving, setBuilderSaving] = useState(false);
+  const [builderModalError, setBuilderModalError] = useState<string | null>(null);
+  const [builderPanelRefresh, setBuilderPanelRefresh] = useState(0);
 
   /** Filter-bar summary + pending sold flats for the selected Purpose only */
   const [filterDetails, setFilterDetails] = useState<PurposeDetails | null>(() =>
@@ -787,6 +804,48 @@ export default function CollectionsPage() {
     setFormTab("sold");
   }
 
+  function openBuilderCollectForm(row?: BuilderCommonCollectionRecord | null) {
+    closeCollectForm();
+    setBuilderModalError(null);
+    if (row) {
+      setBuilderModalMode("edit");
+      setEditingBuilderCollection(row);
+    } else {
+      setBuilderModalMode("add");
+      setEditingBuilderCollection(null);
+    }
+    setBuilderModalOpen(true);
+  }
+
+  function closeBuilderCollectForm() {
+    if (builderSaving) return;
+    setBuilderModalOpen(false);
+    setEditingBuilderCollection(null);
+    setBuilderModalError(null);
+  }
+
+  async function handleBuilderCollectionSave(data: BuilderCommonCollectionFormData) {
+    setBuilderSaving(true);
+    setBuilderModalError(null);
+    try {
+      if (builderModalMode === "edit" && editingBuilderCollection) {
+        await updateBuilderCommonCollectionClient(editingBuilderCollection.id, data);
+        setSuccess("Builder collection updated.");
+      } else {
+        await createBuilderCommonCollectionClient(data);
+        setSuccess("Builder collection added.");
+      }
+      notifyDataChanged("payment");
+      setBuilderPanelRefresh((n) => n + 1);
+      setBuilderModalOpen(false);
+      setEditingBuilderCollection(null);
+    } catch (e) {
+      setBuilderModalError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBuilderSaving(false);
+    }
+  }
+
   function handleFormTabChange(tab: CollectionFlatTab) {
     const purpose =
       purposes.find((p) => p.id === formPurposeId) ||
@@ -1178,6 +1237,13 @@ export default function CollectionsPage() {
         </div>
       )}
 
+      <BuilderCommonCollectionsPanel
+        isSuperAdmin={isSuperAdmin}
+        refreshKey={builderPanelRefresh}
+        onAdd={() => openBuilderCollectForm()}
+        onEdit={(row) => openBuilderCollectForm(row)}
+      />
+
       {/* Purpose accordions — collapsed by default; only one open at a time */}
       <div className="space-y-3">
         {visiblePurposes.map((purpose) => {
@@ -1390,6 +1456,28 @@ export default function CollectionsPage() {
         onTabChange={handleFormTabChange}
         onBuilderNameChange={setFormBuilderName}
         onSave={() => void saveCollection()}
+        onSwitchToBuilder={() => {
+          closeCollectForm();
+          openBuilderCollectForm();
+        }}
+      />
+
+      <BuilderCommonCollectionModal
+        open={builderModalOpen && isSuperAdmin}
+        mode={builderModalMode}
+        initial={editingBuilderCollection}
+        saving={builderSaving}
+        error={builderModalError}
+        onClose={closeBuilderCollectForm}
+        onSubmit={handleBuilderCollectionSave}
+        onSwitchToMember={
+          builderModalMode === "add"
+            ? () => {
+                closeBuilderCollectForm();
+                openCollectForm();
+              }
+            : undefined
+        }
       />
 
       <ConfirmDeleteModal

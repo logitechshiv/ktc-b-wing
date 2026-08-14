@@ -117,7 +117,9 @@ export function invalidateCacheForSource(source: CacheInvalidationSource): void 
         CacheKeys.dashboard(),
         "purposes:*",
         "purpose-details:*",
-        "notifications:*"
+        "notifications:*",
+        "common-expense-split:*",
+        "builder-common-collections:*"
       );
       break;
     case "expense":
@@ -126,6 +128,7 @@ export function invalidateCacheForSource(source: CacheInvalidationSource): void 
         "expenses:*",
         CacheKeys.expenseCategories(),
         "common-expense-split:*",
+        "builder-common-collections:*",
         CacheKeys.kiran3Common(),
         "notifications:*"
       );

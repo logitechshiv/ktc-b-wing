@@ -41,6 +41,8 @@ interface Props {
   onTabChange: (tab: CollectionFlatTab) => void;
   onBuilderNameChange: (name: string) => void;
   onSave: () => void;
+  /** Switch Add Collection to Common-Expense Builder form */
+  onSwitchToBuilder?: () => void;
 }
 
 export default function CollectionModal({
@@ -75,6 +77,7 @@ export default function CollectionModal({
   onTabChange,
   onBuilderNameChange,
   onSave,
+  onSwitchToBuilder,
 }: Props) {
   const [personSearch, setPersonSearch] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -174,6 +177,26 @@ export default function CollectionModal({
           >
             Close
           </button>
+        </div>
+
+        <div className="mb-4">
+          <div className="text-xs font-semibold text-slate-600">Payer Type</div>
+          <div className="mt-1.5 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className="rounded-xl border border-brand bg-brand/5 px-3 py-2.5 text-left text-sm font-semibold text-brand"
+            >
+              Member
+            </button>
+            <button
+              type="button"
+              disabled={formSaving || !onSwitchToBuilder}
+              onClick={() => onSwitchToBuilder?.()}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Builder
+            </button>
+          </div>
         </div>
 
         {allowUnsold ? (
