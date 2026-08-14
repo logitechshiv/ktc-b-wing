@@ -1,15 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { inr } from "@/lib/format";
+import { inr, fmtDateDMY } from "@/lib/format";
 import { formSelectFilter } from "@/lib/form-styles";
-import { subscribeDataChanged } from "@/lib/data-sync";
+import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
+import { readCurrentUser } from "@/lib/auth-client";
 import {
   COMMON_EXPENSE_TOTAL_FLATS,
   emptyCommonExpenseSplit,
   readCommonExpenseSplit,
   type CommonExpenseSplitStats,
 } from "@/lib/common-expense-split-api";
+import {
+  deleteBuilderCommonCollectionClient,
+  readBuilderCommonCollections,
+  updateBuilderCommonCollectionClient,
+  createBuilderCommonCollectionClient,
+  type BuilderCommonCollectionRecord,
+} from "@/lib/builder-common-collections-api";
+import BuilderCommonCollectionModal, {
+  type BuilderCommonCollectionFormData,
+} from "@/components/collections/BuilderCommonCollectionModal";
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 const MONTHS = [
   { value: 1, label: "January" },
@@ -62,12 +74,26 @@ export default function CommonExpenseSplit() {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  const [builderRows, setBuilderRows] = useState<BuilderCommonCollectionRecord[]>([]);
+  const [builderRowsLoading, setBuilderRowsLoading] = useState(false);
+
+  const [builderModalOpen, setBuilderModalOpen] = useState(false);
+  const [builderModalMode, setBuilderModalMode] = useState<"add" | "edit">("add");
+  const [editingBuilder, setEditingBuilder] = useState<BuilderCommonCollectionRecord | null>(null);
+  const [builderSaving, setBuilderSaving] = useState(false);
+  const [builderModalError, setBuilderModalError] = useState<string | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<BuilderCommonCollectionRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async (selectedMonth: number, selectedYear: number) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await readCommonExpenseSplit(selectedMonth, selectedYear);
+      const data = await readCommonExpenseSplit(selectedMonth, selectedYear, { force: true });
       setStats(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load common expense split");
@@ -77,9 +103,32 @@ export default function CommonExpenseSplit() {
     }
   }, []);
 
+  const loadBuilderRows = useCallback(async (selectedMonth: number, selectedYear: number) => {
+    setBuilderRowsLoading(true);
+    try {
+      const rows = await readBuilderCommonCollections({
+        month: selectedMonth,
+        year: selectedYear,
+        force: true,
+      });
+      setBuilderRows(rows);
+    } catch {
+      setBuilderRows([]);
+    } finally {
+      setBuilderRowsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void readCurrentUser()
+      .then((u) => setIsSuperAdmin(u?.role === "super_admin"))
+      .catch(() => setIsSuperAdmin(false));
+  }, []);
+
   useEffect(() => {
     void load(month, year);
-  }, [load, month, year]);
+    void loadBuilderRows(month, year);
+  }, [load, loadBuilderRows, month, year]);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -95,13 +144,14 @@ export default function CommonExpenseSplit() {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         void load(month, year);
+        void loadBuilderRows(month, year);
       }, 200);
     });
     return () => {
       window.clearTimeout(timer);
       unsub();
     };
-  }, [load, month, year]);
+  }, [load, loadBuilderRows, month, year]);
 
   const totalFlats = COMMON_EXPENSE_TOTAL_FLATS;
   const monthTotal = Number.isFinite(stats.totalCommonExpense) ? stats.totalCommonExpense : 0;
@@ -116,7 +166,6 @@ export default function CommonExpenseSplit() {
     : perFlat * unsold;
   const builderCollected = Number.isFinite(stats.builderCollected) ? stats.builderCollected : 0;
   const builderPending = Number.isFinite(stats.builderPending) ? stats.builderPending : 0;
-  const builderStatus = stats.builderStatus || "pending";
   const monthLabel = MONTHS.find((m) => m.value === month)?.label ?? "";
 
   const years = useMemo(() => {
@@ -126,12 +175,62 @@ export default function CommonExpenseSplit() {
     return Array.from(set).sort((a, b) => b - a);
   }, [stats.years, year, now]);
 
-  const statusText =
-    builderStatus === "fully_paid"
-      ? "Fully Paid"
-      : builderStatus === "partially_paid"
-        ? "Partially Paid"
-        : "Pending";
+  function openEditBuilder(row: BuilderCommonCollectionRecord) {
+    setBuilderModalMode("edit");
+    setEditingBuilder(row);
+    setBuilderModalError(null);
+    setBuilderModalOpen(true);
+  }
+
+  function openAddBuilder() {
+    setBuilderModalMode("add");
+    setEditingBuilder(null);
+    setBuilderModalError(null);
+    setBuilderModalOpen(true);
+  }
+
+  function closeBuilderModal() {
+    if (builderSaving) return;
+    setBuilderModalOpen(false);
+    setEditingBuilder(null);
+    setBuilderModalError(null);
+  }
+
+  async function handleBuilderSave(data: BuilderCommonCollectionFormData) {
+    setBuilderSaving(true);
+    setBuilderModalError(null);
+    try {
+      if (builderModalMode === "edit" && editingBuilder) {
+        await updateBuilderCommonCollectionClient(editingBuilder.id, data);
+      } else {
+        await createBuilderCommonCollectionClient(data);
+      }
+      setBuilderModalOpen(false);
+      setEditingBuilder(null);
+      notifyDataChanged("payment");
+      await Promise.all([load(month, year), loadBuilderRows(month, year)]);
+    } catch (e) {
+      setBuilderModalError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBuilderSaving(false);
+    }
+  }
+
+  async function handleBuilderDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteBuilderCommonCollectionClient(deleteTarget.id);
+      setDeleteTarget(null);
+      notifyDataChanged("payment");
+      await Promise.all([load(month, year), loadBuilderRows(month, year)]);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <section className="overflow-hidden rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80 sm:p-5">
@@ -177,14 +276,16 @@ export default function CommonExpenseSplit() {
           ? "Loading…"
           : stats.includedCategories.length
             ? stats.includedCategories.join(", ")
-            : "None (mark categories in Expenses → Manage Categories)"}.
+            : "None (mark categories in Expenses → Manage Categories)"}
+        .
         <span className="mt-0.5 block">
           <span className="font-medium text-slate-600">Excluded:</span>{" "}
           {loading
             ? "Loading…"
             : stats.excludedCategories.length
               ? stats.excludedCategories.join(", ")
-              : "None"}.
+              : "None"}
+          .
         </span>
       </p>
 
@@ -252,9 +353,15 @@ export default function CommonExpenseSplit() {
             <div className="text-[11px] font-bold uppercase tracking-wide text-orange-800">
               Builder collection
             </div>
-            {/* <span className="rounded-full border border-orange-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-orange-800">
-              {statusText}
-            </span> */}
+            {isSuperAdmin && builderPending > 0 ? (
+              <button
+                type="button"
+                onClick={openAddBuilder}
+                className="rounded-full border border-orange-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-orange-800 hover:bg-orange-50"
+              >
+                + Add
+              </button>
+            ) : null}
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <div className="rounded-xl bg-white px-3 py-2.5">
@@ -282,52 +389,90 @@ export default function CommonExpenseSplit() {
               </div>
             </div>
           </div>
+
+          {isSuperAdmin ? (
+            <div className="mt-3 space-y-2">
+              {builderRowsLoading ? (
+                <p className="px-0.5 text-[11px] text-slate-400">Loading builder payments…</p>
+              ) : builderRows.length === 0 ? (
+                <p className="px-0.5 text-[11px] text-slate-400">
+                  No builder payments recorded for this month.
+                </p>
+              ) : (
+                <ul className="divide-y divide-orange-100 overflow-hidden rounded-xl border border-orange-100 bg-white">
+                  {builderRows.map((row) => (
+                    <li
+                      key={row.id}
+                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold tabular-nums text-navy">
+                          {inr(Math.round(row.amount))}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-slate-400">
+                          {fmtDateDMY(row.paymentDate)} ·{" "}
+                          <span className="capitalize">{row.paymentMode}</span>
+                          {row.referenceNumber ? ` · ${row.referenceNumber}` : ""}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openEditBuilder(row)}
+                          className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteError(null);
+                            setDeleteTarget(row);
+                          }}
+                          className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
-
-      {/* {!loading && stats.categories.length > 0 ? (
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100">
-          <table className="min-w-full text-left text-[11px]">
-            <thead className="bg-slate-50 text-slate-500">
-              <tr>
-                <th className="px-3 py-2 font-semibold">Category</th>
-                <th className="px-3 py-2 font-semibold tabular-nums">Share</th>
-                <th className="px-3 py-2 font-semibold tabular-nums">Collected</th>
-                <th className="px-3 py-2 font-semibold tabular-nums">Pending</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {stats.categories.map((row) => (
-                <tr key={row.category}>
-                  <td className="max-w-[140px] truncate px-3 py-2 font-medium text-navy">
-                    {row.category}
-                  </td>
-                  <td className="px-3 py-2 tabular-nums text-slate-600">
-                    {inr(Math.round(row.builderShare))}
-                  </td>
-                  <td className="px-3 py-2 tabular-nums text-slate-600">
-                    {inr(Math.round(row.collected))}
-                  </td>
-                  <td className="px-3 py-2 tabular-nums text-slate-600">
-                    {inr(Math.round(row.pending))}
-                  </td>
-                </tr>
-              ))}
-              <tr className="bg-slate-50 font-semibold text-navy">
-                <td className="px-3 py-2">Total</td>
-                <td className="px-3 py-2 tabular-nums">{inr(Math.round(unsoldTotal))}</td>
-                <td className="px-3 py-2 tabular-nums">{inr(Math.round(builderCollected))}</td>
-                <td className="px-3 py-2 tabular-nums">{inr(Math.round(builderPending))}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      ) : null} */}
 
       <p className="mt-4 rounded-xl bg-slate-50 px-3.5 py-3 text-[11px] leading-relaxed text-slate-500">
         Formula: Common total ÷ {totalFlats} = per flat. Sold share = per flat × {sold}. Builder share = per flat ×{" "}
         {unsold}. Builder payments do not reduce the common expense total.
       </p>
+
+      <BuilderCommonCollectionModal
+        open={builderModalOpen && isSuperAdmin}
+        mode={builderModalMode}
+        initial={editingBuilder}
+        saving={builderSaving}
+        error={builderModalError}
+        onClose={closeBuilderModal}
+        onSubmit={handleBuilderSave}
+      />
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget && isSuperAdmin}
+        title="Delete Builder Collection?"
+        itemName={deleteTarget ? inr(Math.round(deleteTarget.amount)) : undefined}
+        quoteItemName={false}
+        message="Are you sure you want to delete this builder payment of"
+        loading={deleting}
+        error={deleteError}
+        onCancel={() => {
+          if (deleting) return;
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+        onConfirm={() => void handleBuilderDelete()}
+      />
     </section>
   );
 }

@@ -66,6 +66,22 @@ export function emptyCommonExpenseSplit(
   };
 }
 
+/** Remaining Builder Pending for Add Collection autofill (falls back to share if nothing collected). */
+export function builderAutofillAmount(data: Pick<
+  CommonExpenseSplitStats,
+  "builderShare" | "builderCollected" | "builderPending"
+>): number {
+  const share = Math.round(Number(data.builderShare) || 0);
+  const collected = Math.round(Number(data.builderCollected) || 0);
+  const pendingRaw = Number(data.builderPending);
+  const pending = Number.isFinite(pendingRaw)
+    ? Math.max(0, Math.round(pendingRaw))
+    : Math.max(0, share - collected);
+  if (pending > 0) return pending;
+  if (collected <= 0 && share > 0) return share;
+  return 0;
+}
+
 async function parseJson(res: Response) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.success === false) {
@@ -129,10 +145,10 @@ export async function readCommonExpenseSplit(
         Number(data.builderShare) || perFlatShare * unsoldFlats
       );
       const builderCollected = Math.max(0, Number(data.builderCollected) || 0);
-      const builderPending = Math.max(
-        0,
-        Number(data.builderPending) || Math.max(0, builderShare - builderCollected)
-      );
+      const pendingRaw = Number(data.builderPending);
+      const builderPending = Number.isFinite(pendingRaw)
+        ? Math.max(0, pendingRaw)
+        : Math.max(0, builderShare - builderCollected);
       const statusRaw = String(data.builderStatus || "pending");
       const builderStatus: BuilderCollectionStatus =
         statusRaw === "fully_paid" || statusRaw === "partially_paid"

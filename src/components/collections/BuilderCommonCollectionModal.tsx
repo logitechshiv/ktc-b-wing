@@ -10,8 +10,20 @@ import {
   readCommonExpenseSplit,
   type CommonExpenseSplitStats,
   emptyCommonExpenseSplit,
+  builderAutofillAmount,
 } from "@/lib/common-expense-split-api";
+import { CacheKeys, peekCache } from "@/lib/data-cache";
 import type { BuilderCommonCollectionRecord } from "@/lib/builder-common-collections-api";
+
+function autoNotesFromSplit(data: CommonExpenseSplitStats) {
+  return (data.expenseItems || [])
+    .map((item) => {
+      const title = displayExpenseTitle(item.titleGujarati, item.title);
+      return `${item.category} : ${title}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
 
 const MONTHS = [
   { value: 1, label: "January" },
@@ -78,58 +90,74 @@ export default function BuilderCommonCollectionModal({
   const [splitLoading, setSplitLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
+  // Reset fields when modal opens — Amount autofills immediately from cache when possible
   useEffect(() => {
     if (!open) return;
     setLocalError(null);
     if (mode === "edit" && initial) {
       setMonth(initial.month);
       setYear(initial.year);
-      setAmount(initial.amount);
+      setAmount(Math.round(Number(initial.amount) || 0));
       setPaymentDate(initial.paymentDate || new Date().toISOString().slice(0, 10));
       setPaymentMode(initial.paymentMode);
       setReferenceNumber(initial.referenceNumber || "");
       setNotes(initial.notes || "");
+      return;
+    }
+
+    const m = now.getMonth() + 1;
+    const y = now.getFullYear();
+    setMonth(m);
+    setYear(y);
+    setPaymentDate(new Date().toISOString().slice(0, 10));
+    setPaymentMode("cash");
+    setReferenceNumber("");
+
+    const cached = peekCache<CommonExpenseSplitStats>(CacheKeys.commonExpenseSplit(m, y));
+    if (cached) {
+      setSplit(cached);
+      setAmount(builderAutofillAmount(cached));
+      setNotes(autoNotesFromSplit(cached));
     } else {
-      const m = now.getMonth() + 1;
-      const y = now.getFullYear();
-      setMonth(m);
-      setYear(y);
       setAmount(0);
-      setPaymentDate(new Date().toISOString().slice(0, 10));
-      setPaymentMode("cash");
-      setReferenceNumber("");
       setNotes("");
     }
   }, [open, mode, initial, now]);
 
+  // Load / refresh split for selected month-year and keep Amount in sync
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setSplitLoading(true);
+
+    // Prefer cached value first so Builder tab click shows Amount immediately
+    const cached = peekCache<CommonExpenseSplitStats>(CacheKeys.commonExpenseSplit(month, year));
+    if (cached && !cancelled) {
+      setSplit(cached);
+      if (mode === "edit" && initial && initial.month === month && initial.year === year) {
+        setAmount(Math.round(Number(initial.amount) || 0));
+      } else {
+        setAmount(builderAutofillAmount(cached));
+        setNotes(autoNotesFromSplit(cached));
+      }
+    }
+
     readCommonExpenseSplit(month, year, { force: true })
       .then((data) => {
         if (cancelled) return;
         setSplit(data);
-        const pending = Math.round(data.builderPending);
         if (mode === "edit" && initial && initial.month === month && initial.year === year) {
-          setAmount(Math.round(initial.amount));
+          setAmount(Math.round(Number(initial.amount) || 0));
           setNotes(initial.notes || "");
         } else {
-          setAmount(pending > 0 ? pending : 0);
-          const autoNotes = (data.expenseItems || [])
-            .map((item) => {
-              const title = displayExpenseTitle(item.titleGujarati, item.title);
-              return `${item.category} : ${title}`;
-            })
-            .filter(Boolean)
-            .join("\n");
-          setNotes(autoNotes);
+          setAmount(builderAutofillAmount(data));
+          setNotes(autoNotesFromSplit(data));
         }
       })
       .catch(() => {
         if (!cancelled) {
           setSplit(emptyCommonExpenseSplit(month, year));
-          if (mode === "add") {
+          if (mode === "add" && !cached) {
             setAmount(0);
             setNotes("");
           }
@@ -255,6 +283,8 @@ export default function BuilderCommonCollectionModal({
                 ))}
               </select>
             </label>
+
+            
             <label className="block text-xs font-semibold text-slate-600">
               Year
               <select
@@ -320,7 +350,7 @@ export default function BuilderCommonCollectionModal({
               onChange={(e) => setAmount(Number(e.target.value))}
               className={field}
               required
-              disabled={saving || splitLoading}
+              disabled={saving || (splitLoading && amount <= 0)}
             />
           </label>
 

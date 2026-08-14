@@ -50,6 +50,7 @@ import {
   updateBuilderCommonCollectionClient,
   type BuilderCommonCollectionRecord,
 } from "@/lib/builder-common-collections-api";
+import { readCommonExpenseSplit } from "@/lib/common-expense-split-api";
 
 function shortPurposeTitle(title: string) {
   return title
@@ -819,6 +820,10 @@ export default function CollectionsPage() {
     } else {
       setBuilderModalMode("add");
       setEditingBuilderCollection(null);
+      // Warm cache so Builder tab Amount autofills as soon as the form opens
+      const m = new Date().getMonth() + 1;
+      const y = new Date().getFullYear();
+      void readCommonExpenseSplit(m, y);
     }
     setBuilderModalOpen(true);
   }
