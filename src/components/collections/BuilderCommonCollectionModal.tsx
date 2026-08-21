@@ -283,8 +283,6 @@ export default function BuilderCommonCollectionModal({
                 ))}
               </select>
             </label>
-
-            
             <label className="block text-xs font-semibold text-slate-600">
               Year
               <select
