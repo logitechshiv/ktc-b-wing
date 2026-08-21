@@ -6,8 +6,6 @@ import Flat from "@/models/Flat";
 import Vehicle from "@/models/Vehicle";
 import BuilderCommonCollection from "@/models/BuilderCommonCollection";
 import { serializeExpense } from "@/lib/expense-utils";
-import { normalizeCategoryName } from "@/lib/common-expense-constants";
-import { getKiran3OnlyCategoryKeys } from "@/lib/expense-category-common";
 
 export interface ExpenseByCategory {
   category: string;
@@ -183,8 +181,6 @@ const RECEIVED_PAYMENT_PIPELINE: PipelineStage[] = [
 
 /**
  * Aggregated dashboard stats from payments, builder common collections, expenses, flats, vehicles.
- * Common Credit (+) / Common Debit (−) expenses are excluded from Fund Summary — they only
- * affect the separate Kiran 3 Common card.
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
   await connectDB();
@@ -192,12 +188,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const [
     purposePaymentAgg,
     builderCommonAgg,
-    expenseByMethodAndCategory,
-    expenseByCategoryRaw,
+    expenseAgg,
+    expenseByCategoryAgg,
     recentExpenseDocs,
     flatAgg,
     vehicleAgg,
-    kiran3CategoryKeys,
   ] = await Promise.all([
       Payment.aggregate<{ _id: string | null; total: number }>([
         ...RECEIVED_PAYMENT_PIPELINE,
@@ -210,16 +205,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
           },
         },
       ]).exec(),
-      Expense.aggregate<{
-        _id: { method: string | null; category: string | null };
-        total: number;
-      }>([
+      Expense.aggregate<{ _id: string | null; total: number }>([
         {
           $group: {
-            _id: {
-              method: "$paymentMethod",
-              category: "$category",
-            },
+            _id: "$paymentMethod",
             total: { $sum: "$amount" },
           },
         },
@@ -257,27 +246,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
           },
         },
       ]).exec(),
-      getKiran3OnlyCategoryKeys(),
     ]);
-
-  const isKiran3Only = (category: string) =>
-    kiran3CategoryKeys.has(normalizeCategoryName(category));
-
-  const methodTotals = new Map<string, number>();
-  for (const row of expenseByMethodAndCategory) {
-    const category = String(row._id?.category || "");
-    if (isKiran3Only(category)) continue;
-    const method = String(row._id?.method || "").toLowerCase() || "cash";
-    methodTotals.set(method, (methodTotals.get(method) || 0) + (Number(row.total) || 0));
-  }
-  const expenseAgg = Array.from(methodTotals.entries()).map(([_id, total]) => ({
-    _id,
-    total,
-  }));
-
-  const expenseByCategoryAgg = expenseByCategoryRaw.filter(
-    (r) => r._id && !isKiran3Only(String(r._id))
-  );
 
   const paymentAgg = mergeModeTotals(purposePaymentAgg, builderCommonAgg);
 

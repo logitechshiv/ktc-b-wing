@@ -4,31 +4,6 @@ import {
   defaultIncludeInCommonExpense,
   normalizeCategoryName,
 } from "@/lib/common-expense-constants";
-import { parseExpenseCategoryRole } from "@/lib/expense-category-role";
-
-/**
- * Normalized category names whose Role is Common Credit (+) or Common Debit (−).
- * These belong only to the Kiran 3 Common card — never Fund Summary expense totals.
- */
-export async function getKiran3OnlyCategoryKeys(): Promise<Set<string>> {
-  await syncExpenseCategoriesFromExpenses();
-  await ensureExpenseCategoryRoles();
-  const docs = await ExpenseCategory.find({})
-    .select({ name: 1, role: 1 })
-    .lean()
-    .exec();
-  const keys = new Set<string>();
-  for (const doc of docs) {
-    const role = parseExpenseCategoryRole(
-      (doc as { role?: string | null }).role,
-      "normal"
-    );
-    if (role !== "common_credit" && role !== "common_debit") continue;
-    const key = normalizeCategoryName(String(doc.name || ""));
-    if (key) keys.add(key);
-  }
-  return keys;
-}
 
 /**
  * Safely backfill `includeInCommonExpense` on existing categories.
