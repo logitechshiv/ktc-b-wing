@@ -108,7 +108,7 @@ export default function Kiran3CommonCard() {
           </span>
         </div>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-          Based on category Role (Credit / Debit)
+          Credit from category Role · Debit from Common Expense
         </p>
       </div>
 
@@ -132,7 +132,7 @@ export default function Kiran3CommonCard() {
             Total Common Debit
           </div>
           <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-            Role: Common Debit (−)
+            Expense Type: Common Expense
           </div>
         </div>
       </div>

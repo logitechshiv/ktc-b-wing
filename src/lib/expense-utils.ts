@@ -1,5 +1,12 @@
-import type { DbExpensePaymentMethod } from "@/lib/expense-constants";
-import { EXPENSE_PAYMENT_METHODS } from "@/lib/expense-constants";
+import type { DbExpensePaymentMethod, DbExpenseType } from "@/lib/expense-constants";
+import {
+  EXPENSE_PAYMENT_METHODS,
+  EXPENSE_TYPES,
+  parseExpenseType,
+} from "@/lib/expense-constants";
+
+export { parseExpenseType, EXPENSE_TYPE_OPTIONS, EXPENSE_TYPES } from "@/lib/expense-constants";
+export type { DbExpenseType } from "@/lib/expense-constants";
 
 export const MAX_EXPENSE_BILL_DOCUMENTS = 10;
 
@@ -61,6 +68,7 @@ export function compareExpensesByCreatedAtDesc(
 export function serializeExpense(doc: {
   _id: { toString(): string; getTimestamp?: () => Date };
   category: string;
+  expenseType?: string | null;
   /** @deprecated legacy English title */
   expenseTitle?: string | null;
   expenseTitleGujarati?: string | null;
@@ -88,6 +96,7 @@ export function serializeExpense(doc: {
   return {
     id: doc._id.toString(),
     category: doc.category || "",
+    expenseType: parseExpenseType(doc.expenseType),
     expenseTitleGujarati,
     amount: Number(doc.amount) || 0,
     displayOrder: Number(doc.displayOrder) || 0,
@@ -105,6 +114,7 @@ export function serializeExpense(doc: {
 
 export interface ExpensePayload {
   category: string;
+  expenseType: DbExpenseType;
   expenseTitleGujarati: string;
   amount: number;
   paymentMethod: DbExpensePaymentMethod;
@@ -119,6 +129,7 @@ export function validateExpensePayload(
   body: Record<string, unknown>
 ): { ok: true; data: ExpensePayload } | { ok: false; message: string } {
   const category = String(body.category ?? "").trim();
+  const expenseType = parseExpenseType(body.expenseType);
   const expenseTitleGujarati =
     String(body.expenseTitleGujarati ?? "").trim() ||
     String(body.expenseTitle ?? "").trim();
@@ -137,6 +148,12 @@ export function validateExpensePayload(
   });
 
   if (!category) return { ok: false, message: "Category is required" };
+  if (!expenseType || !EXPENSE_TYPES.includes(expenseType)) {
+    return {
+      ok: false,
+      message: "Expense Type is required (General Expense or Common Expense)",
+    };
+  }
   if (!expenseTitleGujarati) {
     return { ok: false, message: "Expense Title (Gujarati) is required" };
   }
@@ -160,6 +177,7 @@ export function validateExpensePayload(
     ok: true,
     data: {
       category,
+      expenseType,
       expenseTitleGujarati,
       amount,
       paymentMethod,

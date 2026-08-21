@@ -4,8 +4,11 @@ import {
   parseExpenseCategoryRole,
   type ExpenseCategoryRole,
 } from "@/lib/expense-category-role";
+import { parseExpenseType } from "@/lib/expense-constants";
 
 export type ExpensePaymentMethod = "cash" | "bank" | "upi" | "cheque";
+
+export type ExpenseType = "general" | "common";
 
 export type { ExpenseCategoryRole };
 
@@ -21,6 +24,8 @@ export interface ExpenseCategoryRecord {
 export interface ExpenseRecord {
   id: string;
   category: string;
+  /** null when legacy record has no expenseType yet */
+  expenseType: ExpenseType | null;
   expenseTitleGujarati: string;
   amount: number;
   displayOrder: number;
@@ -37,6 +42,7 @@ export interface ExpenseRecord {
 
 export interface ExpenseInput {
   category: string;
+  expenseType: ExpenseType;
   expenseTitleGujarati: string;
   amount: number;
   paymentMethod: ExpensePaymentMethod;
@@ -74,6 +80,7 @@ function toExpense(raw: Record<string, unknown>): ExpenseRecord {
   return {
     id: String(raw.id ?? raw._id),
     category: String(raw.category ?? ""),
+    expenseType: parseExpenseType(raw.expenseType),
     expenseTitleGujarati:
       String(raw.expenseTitleGujarati ?? "").trim() || String(raw.expenseTitle ?? "").trim(),
     amount: Number(raw.amount) || 0,

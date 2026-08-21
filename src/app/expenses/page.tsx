@@ -47,6 +47,7 @@ function toRow(e: ExpenseRecord) {
   return {
     id: e.id,
     category: e.category,
+    expenseType: e.expenseType || undefined,
     name: displayExpenseTitle(e.expenseTitleGujarati),
     amount: e.amount,
     date: e.expenseDate,

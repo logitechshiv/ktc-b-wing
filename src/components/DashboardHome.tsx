@@ -251,9 +251,12 @@ export default function DashboardHome() {
         )} */}
 
         <div className="mt-4 rounded-xl bg-slate-50/80 px-3.5 py-3 text-[11px] leading-relaxed text-slate-500">
-          <p>રોકડ હાથમાં = રોકડ જમા − રોકડ ખર્ચ.</p>
+          <p>રોકડ હાથમાં = રોકડ જમા − રોકડ ખર્ચ (General Expense).</p>
           <p className="mt-1">
-            બેંક બેલેન્સ = બેંક / UPI / ચેક જમા − બેંક / UPI / ચેક ખર્ચ.
+            બેંક બેલેન્સ = બેંક / UPI / ચેક જમા − બેંક / UPI / ચેક ખર્ચ (General Expense).
+          </p>
+          <p className="mt-1">
+            Common Expense Fund Summary માં કાપાતું નથી — ફક્ત Kiran 3 Common Debit માં જાય છે.
           </p>
         </div>
       </section>

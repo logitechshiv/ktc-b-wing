@@ -6,6 +6,7 @@ import Flat from "@/models/Flat";
 import Vehicle from "@/models/Vehicle";
 import BuilderCommonCollection from "@/models/BuilderCommonCollection";
 import { serializeExpense } from "@/lib/expense-utils";
+import { parseExpenseType } from "@/lib/expense-constants";
 
 export interface ExpenseByCategory {
   category: string;
@@ -181,6 +182,8 @@ const RECEIVED_PAYMENT_PIPELINE: PipelineStage[] = [
 
 /**
  * Aggregated dashboard stats from payments, builder common collections, expenses, flats, vehicles.
+ * Fund Summary expenses exclude Expense Type = Common Expense (those belong only to Kiran 3 Common Debit).
+ * General Expense + legacy rows (no expenseType) still reduce Total / Cash / Bank balances.
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
   await connectDB();
@@ -188,8 +191,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const [
     purposePaymentAgg,
     builderCommonAgg,
-    expenseAgg,
-    expenseByCategoryAgg,
+    expenseByMethodAndType,
+    expenseByCategoryAndType,
     recentExpenseDocs,
     flatAgg,
     vehicleAgg,
@@ -205,26 +208,37 @@ export async function getDashboardStats(): Promise<DashboardStats> {
           },
         },
       ]).exec(),
-      Expense.aggregate<{ _id: string | null; total: number }>([
+      Expense.aggregate<{
+        _id: { method: string | null; expenseType: string | null };
+        total: number;
+      }>([
         {
           $group: {
-            _id: "$paymentMethod",
+            _id: {
+              method: "$paymentMethod",
+              expenseType: "$expenseType",
+            },
             total: { $sum: "$amount" },
           },
         },
       ]).exec(),
-      Expense.aggregate<{ _id: string | null; total: number }>([
+      Expense.aggregate<{
+        _id: { category: string | null; expenseType: string | null };
+        total: number;
+      }>([
         {
           $group: {
-            _id: "$category",
+            _id: {
+              category: "$category",
+              expenseType: "$expenseType",
+            },
             total: { $sum: "$amount" },
           },
         },
-        { $sort: { total: -1 } },
       ]).exec(),
       Expense.find({})
         .select(
-          "category expenseTitleGujarati amount displayOrder paymentMethod expenseDate billImage billImages notes whatsappShared createdAt"
+          "category expenseType expenseTitleGujarati amount displayOrder paymentMethod expenseDate billImage billImages notes whatsappShared createdAt"
         )
         .sort({ createdAt: -1, expenseDate: -1 })
         .limit(3)
@@ -247,6 +261,34 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         },
       ]).exec(),
     ]);
+
+  const isFundSummaryExpense = (expenseTypeRaw: unknown) =>
+    parseExpenseType(expenseTypeRaw) !== "common";
+
+  const methodTotals = new Map<string, number>();
+  for (const row of expenseByMethodAndType) {
+    if (!isFundSummaryExpense(row._id?.expenseType)) continue;
+    const method = String(row._id?.method || "").toLowerCase() || "cash";
+    methodTotals.set(method, (methodTotals.get(method) || 0) + (Number(row.total) || 0));
+  }
+  const expenseAgg = Array.from(methodTotals.entries()).map(([_id, total]) => ({
+    _id,
+    total,
+  }));
+
+  const categoryTotals = new Map<string, number>();
+  for (const row of expenseByCategoryAndType) {
+    if (!isFundSummaryExpense(row._id?.expenseType)) continue;
+    const category = String(row._id?.category || "").trim();
+    if (!category) continue;
+    categoryTotals.set(
+      category,
+      (categoryTotals.get(category) || 0) + (Number(row.total) || 0)
+    );
+  }
+  const expenseByCategoryAgg = Array.from(categoryTotals.entries())
+    .map(([_id, total]) => ({ _id, total }))
+    .sort((a, b) => b.total - a.total);
 
   const paymentAgg = mergeModeTotals(purposePaymentAgg, builderCommonAgg);
 

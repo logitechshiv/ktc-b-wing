@@ -9,7 +9,9 @@ import {
   type ExpenseInput,
   type ExpensePaymentMethod,
   type ExpenseRecord,
+  type ExpenseType,
 } from "@/lib/expenses-api";
+import { EXPENSE_TYPE_OPTIONS } from "@/lib/expense-constants";
 import { formField, formSelect } from "@/lib/form-styles";
 
 interface Props {
@@ -40,6 +42,7 @@ export default function ExpenseModal({
   onSubmit,
 }: Props) {
   const [category, setCategory] = useState("");
+  const [expenseType, setExpenseType] = useState<ExpenseType | "">("");
   const [expenseTitleGujarati, setExpenseTitleGujarati] = useState("");
   const [amount, setAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<ExpensePaymentMethod>("cash");
@@ -56,6 +59,7 @@ export default function ExpenseModal({
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (mode === "edit" && initial) {
       setCategory(initial.category);
+      setExpenseType(initial.expenseType || "");
       setExpenseTitleGujarati(initial.expenseTitleGujarati);
       setAmount(initial.amount);
       setPaymentMethod(initial.paymentMethod);
@@ -70,6 +74,7 @@ export default function ExpenseModal({
       setNotes(initial.notes);
     } else {
       setCategory(categories[0]?.name || "");
+      setExpenseType("");
       setExpenseTitleGujarati("");
       setAmount(0);
       setPaymentMethod("cash");
@@ -138,6 +143,10 @@ export default function ExpenseModal({
       setLocalError("Category is required");
       return;
     }
+    if (expenseType !== "general" && expenseType !== "common") {
+      setLocalError("Expense Type is required");
+      return;
+    }
     if (!expenseTitleGujarati.trim()) {
       setLocalError("Expense Title (Gujarati) is required");
       return;
@@ -149,6 +158,7 @@ export default function ExpenseModal({
 
     await onSubmit({
       category: category.trim(),
+      expenseType,
       expenseTitleGujarati: expenseTitleGujarati.trim(),
       amount,
       paymentMethod,
@@ -206,6 +216,29 @@ export default function ExpenseModal({
                 )}
             </select>
           </label>
+
+          <div>
+            <div className="text-xs font-semibold text-slate-600">
+              Expense Type <span className="text-rose-500">*</span>
+            </div>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              {EXPENSE_TYPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setExpenseType(opt.value)}
+                  className={
+                    "rounded-xl border px-3 py-2.5 text-left text-sm font-semibold " +
+                    (expenseType === opt.value
+                      ? "border-brand bg-brand/5 text-brand"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <label className="block text-xs font-semibold text-slate-600">
             Expense Title (Gujarati)

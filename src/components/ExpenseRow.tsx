@@ -6,6 +6,8 @@ import { inr, fmtDateDMY } from "@/lib/format";
 export interface ExpenseRowData {
   id: string;
   category: string;
+  /** general | common — optional for legacy rows */
+  expenseType?: "general" | "common" | string;
   name: string;
   amount: number;
   date: string;
@@ -145,6 +147,11 @@ export default function ExpenseRow({
             <span className="rounded-full border border-brand/25 bg-brand/10 px-2.5 py-0.5 text-[11px] font-semibold text-brand">
               {e.category}
             </span>
+            {e.expenseType === "common" || e.expenseType === "general" ? (
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500">
+                {e.expenseType === "common" ? "Common Expense" : "General Expense"}
+              </span>
+            ) : null}
             <span className="min-w-0 text-sm font-bold text-navy">{e.name}</span>
           </div>
           {e.note?.trim() ? (

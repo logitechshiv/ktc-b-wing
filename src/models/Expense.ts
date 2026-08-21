@@ -1,7 +1,12 @@
 import mongoose, { Schema, models, model, type InferSchemaType, type Model } from "mongoose";
-import { EXPENSE_PAYMENT_METHODS } from "@/lib/expense-constants";
+import { EXPENSE_PAYMENT_METHODS, EXPENSE_TYPES } from "@/lib/expense-constants";
 
-export { EXPENSE_PAYMENT_METHODS, type DbExpensePaymentMethod } from "@/lib/expense-constants";
+export {
+  EXPENSE_PAYMENT_METHODS,
+  EXPENSE_TYPES,
+  type DbExpensePaymentMethod,
+  type DbExpenseType,
+} from "@/lib/expense-constants";
 
 const ExpenseSchema = new Schema(
   {
@@ -9,6 +14,17 @@ const ExpenseSchema = new Schema(
       type: String,
       required: true,
       trim: true,
+      index: true,
+    },
+    /**
+     * general = normal Fund Summary expense (not Kiran 3)
+     * common = counts toward Kiran 3 Common Debit
+     * Optional for legacy rows created before this field existed.
+     */
+    expenseType: {
+      type: String,
+      enum: EXPENSE_TYPES,
+      required: false,
       index: true,
     },
     /** @deprecated legacy English title — kept for reading old records */
