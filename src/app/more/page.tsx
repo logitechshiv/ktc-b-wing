@@ -2,12 +2,7 @@ import Link from "next/link";
 
 const modules = [
   { name: "Notices", desc: "Announcements board", icon: "📢", href: "/notices" },
-  {
-    name: "Emergency Contact",
-    desc: "Important contact numbers for the society",
-    icon: "📞",
-    href: "/important-numbers",
-  },
+  { name: "Emergency Contact", desc: "Important contact numbers for the society", icon: "📞", href: "/important-numbers" },
   { name: "Charge Rounds", desc: "Create dues rounds", icon: "🧾" },
   { name: "Fund Transfer", desc: "Cash → Bank", icon: "🔁" },
   { name: "Complaints", desc: "Maintenance requests", icon: "🛠️" },
@@ -17,7 +12,7 @@ const modules = [
   { name: "Settings", desc: "Society info", icon: "⚙️" },
 ];
 
-export default function MorePage() {
+export default function MorePage() {  
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-bold text-navy">More</h1>

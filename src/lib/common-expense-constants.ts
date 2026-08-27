@@ -64,6 +64,13 @@ export function computePerFlatShare(totalCommonExpense: number, totalFlats = COM
   return Number.isFinite(share) ? share : 0;
 }
 
+/** Round to paise (2 decimal places). */
+export function roundRupeePaise(n: number): number {
+  const value = Number(n);
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 100) / 100;
+}
+
 /**
  * Convert fractional shares into whole rupees that sum exactly to `targetTotal`
  * (largest-remainder method). Avoids category rounded shares summing to ±1

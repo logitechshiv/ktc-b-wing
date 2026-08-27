@@ -1,7 +1,7 @@
 import { connectDB } from "@/lib/mongodb";
 import Expense from "@/models/Expense";
 import ExpenseCategory from "@/models/ExpenseCategory";
-import { normalizeCategoryName } from "@/lib/common-expense-constants";
+import { normalizeCategoryName, roundRupeePaise } from "@/lib/common-expense-constants";
 import { parseExpenseType } from "@/lib/expense-constants";
 import {
   parseExpenseCategoryRole,
@@ -120,7 +120,9 @@ export async function getKiran3CommonBalance(): Promise<Kiran3CommonBalance> {
   if (!Number.isFinite(totalCommonCredit) || totalCommonCredit < 0) totalCommonCredit = 0;
   if (!Number.isFinite(totalCommonDebit) || totalCommonDebit < 0) totalCommonDebit = 0;
 
-  const balance = totalCommonCredit - totalCommonDebit;
+  totalCommonCredit = roundRupeePaise(totalCommonCredit);
+  totalCommonDebit = roundRupeePaise(totalCommonDebit);
+  const balance = roundRupeePaise(totalCommonCredit - totalCommonDebit);
 
   return {
     totalCommonCredit,

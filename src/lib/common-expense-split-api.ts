@@ -1,4 +1,4 @@
-import { COMMON_EXPENSE_TOTAL_FLATS } from "@/lib/common-expense-constants";
+import { COMMON_EXPENSE_TOTAL_FLATS, roundRupeePaise } from "@/lib/common-expense-constants";
 import { CacheKeys, cachedQuery } from "@/lib/data-cache";
 import type { BuilderCollectionStatus } from "@/lib/builder-common-collection-service";
 
@@ -71,12 +71,12 @@ export function builderAutofillAmount(data: Pick<
   CommonExpenseSplitStats,
   "builderShare" | "builderCollected" | "builderPending"
 >): number {
-  const share = Math.round(Number(data.builderShare) || 0);
-  const collected = Math.round(Number(data.builderCollected) || 0);
+  const share = roundRupeePaise(Number(data.builderShare) || 0);
+  const collected = roundRupeePaise(Number(data.builderCollected) || 0);
   const pendingRaw = Number(data.builderPending);
   const pending = Number.isFinite(pendingRaw)
-    ? Math.max(0, Math.round(pendingRaw))
-    : Math.max(0, share - collected);
+    ? Math.max(0, roundRupeePaise(pendingRaw))
+    : Math.max(0, roundRupeePaise(share - collected));
   if (pending > 0) return pending;
   if (collected <= 0 && share > 0) return share;
   return 0;

@@ -7,6 +7,7 @@ import Vehicle from "@/models/Vehicle";
 import BuilderCommonCollection from "@/models/BuilderCommonCollection";
 import { serializeExpense } from "@/lib/expense-utils";
 import { parseExpenseType } from "@/lib/expense-constants";
+import { roundRupeePaise } from "@/lib/common-expense-constants";
 
 export interface ExpenseByCategory {
   category: string;
@@ -292,17 +293,21 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   const paymentAgg = mergeModeTotals(purposePaymentAgg, builderCommonAgg);
 
-  const totalCollection = paymentAgg.reduce((s, r) => s + (r.total || 0), 0);
-  const totalExpense = expenseAgg.reduce((s, r) => s + (r.total || 0), 0);
+  const totalCollection = roundRupeePaise(
+    paymentAgg.reduce((s, r) => s + (r.total || 0), 0)
+  );
+  const totalExpense = roundRupeePaise(
+    expenseAgg.reduce((s, r) => s + (r.total || 0), 0)
+  );
 
-  const cashCollection = sumCash(paymentAgg);
-  const cashExpense = sumCash(expenseAgg);
-  const bankCollection = sumByMode(paymentAgg, BANK_MODES);
-  const bankExpense = sumByMode(expenseAgg, BANK_MODES);
+  const cashCollection = roundRupeePaise(sumCash(paymentAgg));
+  const cashExpense = roundRupeePaise(sumCash(expenseAgg));
+  const bankCollection = roundRupeePaise(sumByMode(paymentAgg, BANK_MODES));
+  const bankExpense = roundRupeePaise(sumByMode(expenseAgg, BANK_MODES));
 
-  const cashInHand = Math.max(0, cashCollection - cashExpense);
-  const bankBalance = bankCollection - bankExpense;
-  const totalBalance = totalCollection - totalExpense;
+  const cashInHand = Math.max(0, roundRupeePaise(cashCollection - cashExpense));
+  const bankBalance = roundRupeePaise(bankCollection - bankExpense);
+  const totalBalance = roundRupeePaise(totalCollection - totalExpense);
 
   const sold = flatAgg.find((r) => r._id === "sold")?.count ?? 0;
   const available = flatAgg.find((r) => r._id === "available")?.count ?? 0;

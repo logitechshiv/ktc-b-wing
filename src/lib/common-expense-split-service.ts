@@ -6,6 +6,7 @@ import {
   allocateWholeRupeeShares,
   computePerFlatShare,
   normalizeCategoryName,
+  roundRupeePaise,
 } from "@/lib/common-expense-constants";
 import {
   categoryNameMatchesIncluded,
@@ -146,30 +147,32 @@ export async function getCommonExpenseSplit(
   years.sort((a, b) => b - a);
 
   const totalFlats = COMMON_EXPENSE_TOTAL_FLATS;
-  const perFlatShare = computePerFlatShare(totalCommonExpense, totalFlats);
+  const perFlatRaw = computePerFlatShare(totalCommonExpense, totalFlats);
+  // Display / multiply using 2-decimal per-flat (e.g. 1310.67 × 32 = 41941.44)
+  const perFlatShare = roundRupeePaise(perFlatRaw);
   const sold = Number(soldFlats) || 0;
   const unsold = Number(unsoldFlats) || 0;
-  const memberShareExact = perFlatShare * sold;
-  const builderShareExact = perFlatShare * unsold;
-  const builderShare = Math.round(builderShareExact);
-  const memberShare = Math.round(memberShareExact);
+  const memberShare = roundRupeePaise(perFlatShare * sold);
+  const builderShare = roundRupeePaise(perFlatShare * unsold);
 
   const categoryRows = Array.from(categoryTotals.entries()).map(([key, row]) => {
-    const catPerFlat = computePerFlatShare(row.total, totalFlats);
+    const catPerFlat = roundRupeePaise(computePerFlatShare(row.total, totalFlats));
     return {
       key,
       label: row.label,
       expenseTotal: row.total,
-      exactBuilderShare: catPerFlat * unsold,
+      exactBuilderShare: roundRupeePaise(catPerFlat * unsold),
       collected: collectedByCategory.get(key) || 0,
     };
   });
   categoryRows.sort((a, b) => b.expenseTotal - a.expenseTotal);
 
-  const allocatedShares = allocateWholeRupeeShares(
-    categoryRows.map((r) => r.exactBuilderShare),
-    builderShare
+  // Allocate category shares in paise so they sum exactly to Builder Share
+  const allocatedPaise = allocateWholeRupeeShares(
+    categoryRows.map((r) => r.exactBuilderShare * 100),
+    Math.round(builderShare * 100)
   );
+  const allocatedShares = allocatedPaise.map((v) => v / 100);
 
   const categories: CommonExpenseCategoryShare[] = categoryRows.map((row, i) => {
     const catBuilderShare = allocatedShares[i] ?? 0;
@@ -197,8 +200,10 @@ export async function getCommonExpenseSplit(
     });
   }
 
-  const builderCollected = categories.reduce((s, c) => s + c.collected, 0);
-  const builderPending = Math.max(0, builderShare - builderCollected);
+  const builderCollected = roundRupeePaise(
+    categories.reduce((s, c) => s + c.collected, 0)
+  );
+  const builderPending = Math.max(0, roundRupeePaise(builderShare - builderCollected));
 
   return {
     month: m,
