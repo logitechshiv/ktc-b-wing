@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { readCurrentUser, type SafeUser } from "@/lib/auth-client";
 import { formatPhone } from "@/lib/format";
 import {
@@ -24,30 +24,96 @@ function PhoneIcon({ className = "h-5 w-5" }: { className?: string }) {
   );
 }
 
+function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V5a2 2 0 012-2h10" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+      <path d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
 function telHref(phone: string) {
   const digits = phone.replace(/\D/g, "");
   return digits ? `tel:${digits}` : undefined;
 }
 
-function PhoneNumberBadge({ phone, href }: { phone: string; href?: string }) {
+function PhoneNumberBadge({
+  phone,
+  href,
+  onCopied,
+}: {
+  phone: string;
+  href?: string;
+  onCopied?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
   const label = formatPhone(phone);
-  const content = (
-    <>
-      <PhoneIcon className="h-3.5 w-3.5 shrink-0 text-rose-500" />
-      <span className="tabular-nums tracking-wide">{label}</span>
-    </>
-  );
-  const className =
-    "inline-flex items-center gap-2 rounded-full border border-slate-600/80 bg-[#1e293b] px-3 py-1.5 text-[13px] font-bold text-white shadow-sm dark:border-slate-500 dark:bg-slate-800";
+  const digits = phone.replace(/\D/g, "");
 
-  if (href) {
-    return (
-      <a href={href} className={className + " transition hover:bg-slate-800"}>
-        {content}
-      </a>
-    );
+  async function handleCopy(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!digits) return;
+    try {
+      await navigator.clipboard.writeText(digits);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = digits;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    onCopied?.();
+    window.setTimeout(() => setCopied(false), 1500);
   }
-  return <span className={className}>{content}</span>;
+
+  return (
+    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-600/80 bg-[#1e293b] py-1.5 pl-3 pr-1.5 text-[13px] font-bold text-white shadow-sm dark:border-slate-500 dark:bg-slate-800">
+      {href ? (
+        <a
+          href={href}
+          className="inline-flex min-w-0 items-center gap-2 transition hover:opacity-90"
+          aria-label={`Call ${label}`}
+        >
+          <PhoneIcon className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+          <span className="truncate tabular-nums tracking-wide">{label}</span>
+        </a>
+      ) : (
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <PhoneIcon className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+          <span className="truncate tabular-nums tracking-wide">{label}</span>
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={(e) => void handleCopy(e)}
+        title={copied ? "Copied" : "Copy number"}
+        aria-label={copied ? "Copied" : `Copy ${label}`}
+        className={
+          "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition " +
+          (copied
+            ? "bg-emerald-500/20 text-emerald-300"
+            : "bg-white/10 text-slate-200 hover:bg-white/20 hover:text-white")
+        }
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+      </button>
+    </div>
+  );
 }
 
 export default function ImportantNumbersPage() {
@@ -273,7 +339,11 @@ export default function ImportantNumbersPage() {
                     ) : null}
                   </div>
                   {row.phone ? (
-                    <PhoneNumberBadge phone={row.phone} href={href} />
+                    <PhoneNumberBadge
+                      phone={row.phone}
+                      href={href}
+                      onCopied={() => flashSuccess("નંબર કોપી થઈ ગયો")}
+                    />
                   ) : null}
                 </li>
               );
