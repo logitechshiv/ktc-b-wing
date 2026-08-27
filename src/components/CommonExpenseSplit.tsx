@@ -353,7 +353,7 @@ export default function CommonExpenseSplit() {
             <div className="text-[11px] font-bold uppercase tracking-wide text-orange-800">
               Builder collection
             </div>
-            {isSuperAdmin && builderPending > 0 ? (
+            {isSuperAdmin && builderPending > 0.001 ? (
               <button
                 type="button"
                 onClick={openAddBuilder}
@@ -390,36 +390,37 @@ export default function CommonExpenseSplit() {
             </div>
           </div>
 
-          {isSuperAdmin ? (
-            <div className="mt-3 space-y-2">
-              {builderRowsLoading ? (
-                <p className="px-0.5 text-[11px] text-slate-400">Loading builder payments…</p>
-              ) : builderRows.length === 0 ? (
-                <p className="px-0.5 text-[11px] text-slate-400">
-                  No builder payments recorded for this month.
-                </p>
-              ) : (
-                <ul className="divide-y divide-orange-100 overflow-hidden rounded-xl border border-orange-100 bg-white">
-                  {builderRows.map((row) => (
-                    <li
-                      key={row.id}
-                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold tabular-nums text-navy">
-                          {inr(row.amount)}
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-slate-400">
-                          {fmtDateDMY(row.paymentDate)} ·{" "}
-                          <span className="capitalize">{row.paymentMode}</span>
-                          {row.referenceNumber ? ` · ${row.referenceNumber}` : ""}
-                        </div>
+          <div className="mt-3 space-y-2">
+            {builderRowsLoading ? (
+              <p className="px-0.5 text-[11px] text-slate-400">Loading builder payments…</p>
+            ) : builderRows.length === 0 ? (
+              <p className="px-0.5 text-[11px] text-slate-400">
+                No builder payments recorded for this month.
+                {isSuperAdmin ? " Use + Add, then Edit from the payment list." : ""}
+              </p>
+            ) : (
+              <ul className="divide-y divide-orange-100 overflow-hidden rounded-xl border border-orange-100 bg-white">
+                {builderRows.map((row) => (
+                  <li
+                    key={row.id}
+                    className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold tabular-nums text-navy">
+                        {inr(row.amount)}
                       </div>
+                      <div className="mt-0.5 text-[11px] text-slate-400">
+                        {fmtDateDMY(row.paymentDate)} ·{" "}
+                        <span className="capitalize">{row.paymentMode}</span>
+                        {row.referenceNumber ? ` · ${row.referenceNumber}` : ""}
+                      </div>
+                    </div>
+                    {isSuperAdmin ? (
                       <div className="flex shrink-0 items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => openEditBuilder(row)}
-                          className="rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10"
+                          className="rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand/15"
                         >
                           Edit
                         </button>
@@ -429,17 +430,17 @@ export default function CommonExpenseSplit() {
                             setDeleteError(null);
                             setDeleteTarget(row);
                           }}
-                          className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
+                          className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-100"
                         >
                           Delete
                         </button>
                       </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ) : null}
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
 

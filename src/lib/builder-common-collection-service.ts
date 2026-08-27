@@ -9,6 +9,7 @@ import {
   allocateWholeRupeeShares,
   computePerFlatShare,
   normalizeCategoryName,
+  roundRupeePaise,
 } from "@/lib/common-expense-constants";
 import {
   categoryNameMatchesIncluded,
@@ -276,7 +277,8 @@ function validateInput(body: Record<string, unknown>): {
   if (!Number.isFinite(year) || year < 1970 || year > 2100) {
     return { ok: false, message: "Valid year is required" };
   }
-  if (!Number.isFinite(amount) || amount <= 0) {
+  const amountRounded = roundRupeePaise(amount);
+  if (!Number.isFinite(amountRounded) || amountRounded <= 0) {
     return { ok: false, message: "Amount must be greater than 0" };
   }
   if (!PAYMENT_MODES.includes(paymentMode)) {
@@ -292,7 +294,7 @@ function validateInput(body: Record<string, unknown>): {
       month: Math.floor(month),
       year: Math.floor(year),
       expenseCategory,
-      amount,
+      amount: amountRounded,
       paymentMode,
       paymentDate,
       referenceNumber,
@@ -342,12 +344,12 @@ export async function getMonthBuilderPending(params: {
 
   const unsold = Number(unsoldFlats) || 0;
   const perFlat = computePerFlatShare(totalCommonExpense, COMMON_EXPENSE_TOTAL_FLATS);
-  const share = Math.round(perFlat * unsold);
-  const collectedRounded = Math.round(collected);
+  const share = roundRupeePaise(perFlat * unsold);
+  const collectedRounded = roundRupeePaise(collected);
   return {
     share,
     collected: collectedRounded,
-    pending: Math.max(0, share - collectedRounded),
+    pending: Math.max(0, roundRupeePaise(share - collectedRounded)),
   };
 }
 
@@ -364,7 +366,7 @@ async function assertWithinMonthPending(params: {
       message: "No Builder Share for this month — add common expenses first",
     };
   }
-  if (Math.round(params.amount) > row.pending) {
+  if (roundRupeePaise(params.amount) > row.pending + 0.001) {
     return {
       ok: false,
       message: `Amount exceeds Builder Pending (pending ₹${row.pending.toLocaleString("en-IN")}, share ₹${row.share.toLocaleString("en-IN")})`,

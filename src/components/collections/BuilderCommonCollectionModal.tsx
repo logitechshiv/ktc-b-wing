@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { inr } from "@/lib/format";
 import { formField, formSelect } from "@/lib/form-styles";
 import type { PaymentMode } from "@/lib/payments-api";
-import { BUILDER_MONTHLY_COLLECTION_LABEL } from "@/lib/common-expense-constants";
+import { BUILDER_MONTHLY_COLLECTION_LABEL, roundRupeePaise } from "@/lib/common-expense-constants";
 import { displayExpenseTitle } from "@/lib/expense-utils";
 import {
   readCommonExpenseSplit,
@@ -97,7 +97,7 @@ export default function BuilderCommonCollectionModal({
     if (mode === "edit" && initial) {
       setMonth(initial.month);
       setYear(initial.year);
-      setAmount(Math.round(Number(initial.amount) || 0));
+      setAmount(roundRupeePaise(Number(initial.amount) || 0));
       setPaymentDate(initial.paymentDate || new Date().toISOString().slice(0, 10));
       setPaymentMode(initial.paymentMode);
       setReferenceNumber(initial.referenceNumber || "");
@@ -135,7 +135,7 @@ export default function BuilderCommonCollectionModal({
     if (cached && !cancelled) {
       setSplit(cached);
       if (mode === "edit" && initial && initial.month === month && initial.year === year) {
-        setAmount(Math.round(Number(initial.amount) || 0));
+        setAmount(roundRupeePaise(Number(initial.amount) || 0));
       } else {
         setAmount(builderAutofillAmount(cached));
         setNotes(autoNotesFromSplit(cached));
@@ -147,7 +147,7 @@ export default function BuilderCommonCollectionModal({
         if (cancelled) return;
         setSplit(data);
         if (mode === "edit" && initial && initial.month === month && initial.year === year) {
-          setAmount(Math.round(Number(initial.amount) || 0));
+          setAmount(roundRupeePaise(Number(initial.amount) || 0));
           setNotes(initial.notes || "");
         } else {
           setAmount(builderAutofillAmount(data));
@@ -173,8 +173,10 @@ export default function BuilderCommonCollectionModal({
 
   const monthPending =
     mode === "edit" && initial && initial.month === month && initial.year === year
-      ? Math.round(split.builderPending) + Math.round(Number(initial.amount) || 0)
-      : Math.round(split.builderPending);
+      ? roundRupeePaise(
+          (Number(split.builderPending) || 0) + (Number(initial.amount) || 0)
+        )
+      : roundRupeePaise(Number(split.builderPending) || 0);
 
   const years = useMemo(() => {
     const set = new Set(split.years.length ? split.years : [year]);
@@ -192,7 +194,7 @@ export default function BuilderCommonCollectionModal({
       setLocalError("Amount must be greater than 0");
       return;
     }
-    if (monthPending > 0 && Math.round(amount) > monthPending) {
+    if (monthPending > 0 && roundRupeePaise(amount) > monthPending + 0.001) {
       setLocalError(
         `Amount exceeds Builder Pending for this month (pending ${inr(monthPending)})`
       );
@@ -206,7 +208,7 @@ export default function BuilderCommonCollectionModal({
       month,
       year,
       expenseCategory: BUILDER_MONTHLY_COLLECTION_LABEL,
-      amount: Math.round(amount),
+      amount: roundRupeePaise(amount),
       paymentDate,
       paymentMode,
       referenceNumber: referenceNumber.trim(),
@@ -345,9 +347,18 @@ export default function BuilderCommonCollectionModal({
             <input
               type="number"
               min={0}
-              step="1"
-              value={amount || ""}
-              onChange={(e) => setAmount(Number(e.target.value))}
+              step="any"
+              inputMode="decimal"
+              value={amount > 0 ? amount : ""}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === "") {
+                  setAmount(0);
+                  return;
+                }
+                const next = Number(raw);
+                if (Number.isFinite(next)) setAmount(next);
+              }}
               className={field}
               required
               disabled={saving || (splitLoading && amount <= 0)}
