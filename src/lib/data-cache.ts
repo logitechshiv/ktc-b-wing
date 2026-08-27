@@ -11,6 +11,7 @@ export type CacheInvalidationSource =
   | "vehicle"
   | "purpose"
   | "notice"
+  | "important_number"
   | "notification"
   | "unknown";
 
@@ -30,6 +31,7 @@ export const CacheKeys = {
   expenses: (q = "", category = "all") => `expenses:q=${q}|category=${category}`,
   expenseCategories: () => "expense-categories",
   notices: (q = "", limit = 0) => `notices:q=${q}|limit=${limit}`,
+  importantNumbers: (all = false) => `important-numbers:all=${all ? 1 : 0}`,
   notifications: (status = "all", limit = 50) =>
     `notifications:status=${status}|limit=${limit}`,
   purposes: (activeOnly = false) => `purposes:active=${activeOnly ? 1 : 0}`,
@@ -148,6 +150,9 @@ export function invalidateCacheForSource(source: CacheInvalidationSource): void 
       break;
     case "notice":
       invalidateCache("notices:*", "notifications:*");
+      break;
+    case "important_number":
+      invalidateCache("important-numbers:*");
       break;
     case "notification":
       invalidateCache("notifications:*");

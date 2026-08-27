@@ -303,10 +303,10 @@ export default function BuilderCommonCollectionModal({
           <div className="rounded-xl bg-orange-50 px-3.5 py-3 text-[11px] leading-relaxed text-orange-800">
             <div className="font-semibold">
               {monthLabel} {year} — Builder Share:{" "}
-              {splitLoading ? "…" : inr(Math.round(split.builderShare))}
+              {splitLoading ? "…" : inr(split.builderShare)}
             </div>
             <div className="mt-1">
-              Collected: {splitLoading ? "…" : inr(Math.round(split.builderCollected))} · Pending:{" "}
+              Collected: {splitLoading ? "…" : inr(split.builderCollected)} · Pending:{" "}
               {splitLoading ? "…" : inr(monthPending)}
             </div>
             <p className="mt-1.5 text-orange-700/80">
@@ -328,7 +328,7 @@ export default function BuilderCommonCollectionModal({
                       <span className="text-slate-400"> : </span>
                       <span>{title}</span>
                       <span className="ml-1 tabular-nums text-slate-500">
-                        ({inr(Math.round(item.amount))})
+                        ({inr(item.amount)})
                       </span>
                     </li>
                   );
@@ -336,6 +336,8 @@ export default function BuilderCommonCollectionModal({
               </ul>
             </div>
           ) : null} */}
+          
+          
 
           <label className="block text-xs font-semibold text-slate-600">
             Amount <span className="text-rose-500">*</span>

@@ -309,7 +309,7 @@ export default function CommonExpenseSplit() {
           tone="rose"
         />
         <StatBox
-          value={loading ? "…" : inr(Math.round(perFlat))}
+          value={loading ? "…" : inr(perFlat)}
           label={`Per flat (÷ ${totalFlats})`}
           hint="Same share for every flat in B-Wing"
           tone="sky"
@@ -325,7 +325,7 @@ export default function CommonExpenseSplit() {
               tone="green"
             />
             <StatBox
-              value={loading ? "…" : inr(Math.round(soldTotal))}
+              value={loading ? "…" : inr(soldTotal)}
               label="Members’ share"
               hint={`${sold} × per flat`}
               tone="green"
@@ -340,7 +340,7 @@ export default function CommonExpenseSplit() {
               tone="orange"
             />
             <StatBox
-              value={loading ? "…" : inr(Math.round(unsoldTotal))}
+              value={loading ? "…" : inr(unsoldTotal)}
               label="Builder share"
               hint={`${unsold} × per flat`}
               tone="orange"
@@ -369,7 +369,7 @@ export default function CommonExpenseSplit() {
                 Builder Share
               </div>
               <div className="mt-0.5 text-sm font-bold tabular-nums text-navy">
-                {loading ? "…" : inr(Math.round(unsoldTotal))}
+                {loading ? "…" : inr(unsoldTotal)}
               </div>
             </div>
             <div className="rounded-xl bg-white px-3 py-2.5">
@@ -377,7 +377,7 @@ export default function CommonExpenseSplit() {
                 Collected
               </div>
               <div className="mt-0.5 text-sm font-bold tabular-nums text-emerald-800">
-                {loading ? "…" : inr(Math.round(builderCollected))}
+                {loading ? "…" : inr(builderCollected)}
               </div>
             </div>
             <div className="rounded-xl bg-white px-3 py-2.5">
@@ -385,7 +385,7 @@ export default function CommonExpenseSplit() {
                 Pending
               </div>
               <div className="mt-0.5 text-sm font-bold tabular-nums text-amber-900">
-                {loading ? "…" : inr(Math.round(builderPending))}
+                {loading ? "…" : inr(builderPending)}
               </div>
             </div>
           </div>
@@ -407,7 +407,7 @@ export default function CommonExpenseSplit() {
                     >
                       <div className="min-w-0">
                         <div className="text-sm font-bold tabular-nums text-navy">
-                          {inr(Math.round(row.amount))}
+                          {inr(row.amount)}
                         </div>
                         <div className="mt-0.5 text-[11px] text-slate-400">
                           {fmtDateDMY(row.paymentDate)} ·{" "}
@@ -461,7 +461,7 @@ export default function CommonExpenseSplit() {
       <ConfirmDeleteModal
         open={!!deleteTarget && isSuperAdmin}
         title="Delete Builder Collection?"
-        itemName={deleteTarget ? inr(Math.round(deleteTarget.amount)) : undefined}
+        itemName={deleteTarget ? inr(deleteTarget.amount) : undefined}
         quoteItemName={false}
         message="Are you sure you want to delete this builder payment of"
         loading={deleting}

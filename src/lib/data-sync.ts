@@ -13,6 +13,7 @@ export type DataChangeSource =
   | "vehicle"
   | "purpose"
   | "notice"
+  | "important_number"
   | "notification"
   | "unknown";
 

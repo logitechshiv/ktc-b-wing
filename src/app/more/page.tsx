@@ -2,6 +2,12 @@ import Link from "next/link";
 
 const modules = [
   { name: "Notices", desc: "Announcements board", icon: "📢", href: "/notices" },
+  {
+    name: "Emergency Contact",
+    desc: "Important contact numbers for the society",
+    icon: "📞",
+    href: "/important-numbers",
+  },
   { name: "Charge Rounds", desc: "Create dues rounds", icon: "🧾" },
   { name: "Fund Transfer", desc: "Cash → Bank", icon: "🔁" },
   { name: "Complaints", desc: "Maintenance requests", icon: "🛠️" },
