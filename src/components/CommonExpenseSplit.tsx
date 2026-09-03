@@ -38,6 +38,15 @@ const MONTHS = [
   { value: 12, label: "December" },
 ];
 
+function monthRangeDMY(month: number, year: number) {
+  const mm = String(month).padStart(2, "0");
+  const lastDay = new Date(year, month, 0).getDate();
+  return {
+    start: `01/${mm}/${year}`,
+    end: `${String(lastDay).padStart(2, "0")}/${mm}/${year}`,
+  };
+}
+
 function StatBox({
   value,
   label,
@@ -167,6 +176,9 @@ export default function CommonExpenseSplit() {
   const builderCollected = Number.isFinite(stats.builderCollected) ? stats.builderCollected : 0;
   const builderPending = Number.isFinite(stats.builderPending) ? stats.builderPending : 0;
   const monthLabel = MONTHS.find((m) => m.value === month)?.label ?? "";
+  const { start: monthStartDMY, end: monthEndDMY } = monthRangeDMY(month, year);
+  const builderFullyCollected =
+    !loading && unsold > 0 && unsoldTotal > 0.001 && builderPending <= 0.001;
 
   const years = useMemo(() => {
     const set = new Set(stats.years.length ? stats.years : [year]);
@@ -400,7 +412,7 @@ export default function CommonExpenseSplit() {
               </p>
             ) : (
               <ul className="divide-y divide-orange-100 overflow-hidden rounded-xl border border-orange-100 bg-white">
-                {builderRows.map((row) => (
+                {builderRows.map((row, index) => (
                   <li
                     key={row.id}
                     className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5"
@@ -414,6 +426,11 @@ export default function CommonExpenseSplit() {
                         <span className="capitalize">{row.paymentMode}</span>
                         {row.referenceNumber ? ` · ${row.referenceNumber}` : ""}
                       </div>
+                      {builderFullyCollected && index === 0 ? (
+                        <div className="mt-1 text-[11px] font-medium leading-snug text-emerald-700">
+                          {monthStartDMY} થી {monthEndDMY} ના {unsold} Unsold ફ્લેટ્સની આખી મેન્ટેનન્સ રકમ Builder પાસેથી મળી ગઈ છે. કોઈ પણ રસીદ બાકી નથી.
+                        </div>
+                      ) : null}
                     </div>
                     {isSuperAdmin ? (
                       <div className="flex shrink-0 items-center gap-1.5">

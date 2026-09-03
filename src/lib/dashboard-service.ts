@@ -183,7 +183,8 @@ const RECEIVED_PAYMENT_PIPELINE: PipelineStage[] = [
 
 /**
  * Aggregated dashboard stats from payments, builder common collections, expenses, flats, vehicles.
- * Fund Summary expenses exclude Expense Type = Common Expense (those belong only to Kiran 3 Common Debit).
+ * Fund Summary / By Payment Mode exclude Expense Type = Common Expense (those belong only to Kiran 3 Common Debit).
+ * Expense by Category includes all expense types (general + common).
  * General Expense + legacy rows (no expenseType) still reduce Total / Cash / Bank balances.
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -277,9 +278,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     total,
   }));
 
+  // Expense by Category includes every expense type (general + common).
+  // Fund Summary / By Payment Mode still exclude Common Expense above.
   const categoryTotals = new Map<string, number>();
   for (const row of expenseByCategoryAndType) {
-    if (!isFundSummaryExpense(row._id?.expenseType)) continue;
     const category = String(row._id?.category || "").trim();
     if (!category) continue;
     categoryTotals.set(
