@@ -10,6 +10,12 @@ const modules = [
   { name: "Reports", desc: "CSV & PDF export", icon: "📊" },
   { name: "Users", desc: "Admins & roles", icon: "👤" },
   { name: "Settings", desc: "Society info", icon: "⚙️" },
+  {
+    name: "Builder Receipt",
+    desc: "Unsold flats maintenance collection",
+    icon: "🏗️",
+    href: "/builder-receipt",
+  },
 ];
 
 export default function MorePage() {  
