@@ -166,7 +166,8 @@ export default function CommonExpenseSplit() {
   const monthTotal = Number.isFinite(stats.totalCommonExpense) ? stats.totalCommonExpense : 0;
   const perFlat = Number.isFinite(stats.perFlatShare) ? stats.perFlatShare : 0;
   const sold = Number.isFinite(stats.soldFlats) ? stats.soldFlats : 0;
-  const unsold = Number.isFinite(stats.unsoldFlats) ? stats.unsoldFlats : 0;
+  const hasMonthlyUnsoldFlats = stats.hasMonthlyUnsoldFlats;
+  const unsold = hasMonthlyUnsoldFlats && Number.isFinite(stats.unsoldFlats) ? Number(stats.unsoldFlats) : 0;
   const soldTotal = Number.isFinite(stats.memberShare)
     ? stats.memberShare
     : perFlat * sold;
@@ -365,7 +366,7 @@ export default function CommonExpenseSplit() {
             <div className="text-[11px] font-bold uppercase tracking-wide text-orange-800">
               Builder collection
             </div>
-            {isSuperAdmin && builderPending > 0.001 ? (
+            {isSuperAdmin && (!hasMonthlyUnsoldFlats || builderPending > 0.001) ? (
               <button
                 type="button"
                 onClick={openAddBuilder}
@@ -474,6 +475,8 @@ export default function CommonExpenseSplit() {
         error={builderModalError}
         onClose={closeBuilderModal}
         onSubmit={handleBuilderSave}
+        initialMonth={month}
+        initialYear={year}
       />
 
       <ConfirmDeleteModal

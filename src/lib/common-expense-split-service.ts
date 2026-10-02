@@ -18,6 +18,7 @@ import {
   sumBuilderCollectedByCategory,
   type BuilderCollectionStatus,
 } from "@/lib/builder-common-collection-service";
+import { getMonthlyUnsoldFlats } from "@/lib/builder-monthly-unsold-flats-service";
 
 export interface CommonExpenseCategoryShare {
   category: string;
@@ -42,7 +43,8 @@ export interface CommonExpenseSplitResult {
   perFlatShare: number;
   expenseCount: number;
   soldFlats: number;
-  unsoldFlats: number;
+  unsoldFlats: number | null;
+  hasMonthlyUnsoldFlats: boolean;
   memberShare: number;
   builderShare: number;
   builderCollected: number;
@@ -70,7 +72,7 @@ export async function getCommonExpenseSplit(
     monthDocs,
     yearRows,
     soldFlats,
-    unsoldFlats,
+    monthlyUnsoldFlats,
     collectedByCategory,
   ] = await Promise.all([
     getIncludedCommonExpenseCategoryNames(),
@@ -97,7 +99,7 @@ export async function getCommonExpenseSplit(
       { $sort: { _id: -1 } },
     ]).exec(),
     Flat.countDocuments({ status: "sold" }),
-    Flat.countDocuments({ status: "available" }),
+    getMonthlyUnsoldFlats(m, y),
     sumBuilderCollectedByCategory(m, y),
   ]);
 
@@ -151,7 +153,7 @@ export async function getCommonExpenseSplit(
   // Display / multiply using 2-decimal per-flat (e.g. 1310.67 × 32 = 41941.44)
   const perFlatShare = roundRupeePaise(perFlatRaw);
   const sold = Number(soldFlats) || 0;
-  const unsold = Number(unsoldFlats) || 0;
+  const unsold = monthlyUnsoldFlats === null ? 0 : Number(monthlyUnsoldFlats) || 0;
   const memberShare = roundRupeePaise(perFlatShare * sold);
   const builderShare = roundRupeePaise(perFlatShare * unsold);
 
@@ -213,7 +215,8 @@ export async function getCommonExpenseSplit(
     perFlatShare,
     expenseCount,
     soldFlats: sold,
-    unsoldFlats: unsold,
+    unsoldFlats: monthlyUnsoldFlats === null ? null : unsold,
+    hasMonthlyUnsoldFlats: monthlyUnsoldFlats !== null,
     memberShare,
     builderShare,
     builderCollected,

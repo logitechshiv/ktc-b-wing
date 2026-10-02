@@ -105,7 +105,8 @@ export default function BuilderReceiptPage() {
 
   const monthLabel = MONTHS.find((m) => m.value === month)?.label ?? "";
   const { start: monthStartDMY, end: monthEndDMY } = monthRangeDMY(month, year);
-  const unsold = Number.isFinite(stats.unsoldFlats) ? stats.unsoldFlats : 0;
+  const hasMonthlyUnsoldFlats = stats.hasMonthlyUnsoldFlats;
+  const unsold = Number.isFinite(stats.unsoldFlats) ? Number(stats.unsoldFlats) : 0;
   const perFlat = Number.isFinite(stats.perFlatShare) ? stats.perFlatShare : 0;
   const builderShare = Number.isFinite(stats.builderShare) ? stats.builderShare : 0;
   const collected = Number.isFinite(stats.builderCollected) ? stats.builderCollected : 0;
@@ -119,13 +120,15 @@ export default function BuilderReceiptPage() {
     return Array.from(set).sort((a, b) => b - a);
   }, [stats.years, year, now]);
 
-  const flatsStatusText = fullyPaid
-    ? "બધાનું પેમેન્ટ મળી ગયું"
-    : partiallyPaid
-      ? "આંશિક પેમેન્ટ મળ્યું"
-      : builderShare > 0.001
-        ? "પેમેન્ટ બાકી છે"
-        : "આ મહિને કોઈ શેર નથી";
+  const flatsStatusText = !hasMonthlyUnsoldFlats
+    ? "Unsold Flats not set for this month"
+    : fullyPaid
+      ? "બધાનું પેમેન્ટ મળી ગયું"
+      : partiallyPaid
+        ? "આંશિક પેમેન્ટ મળ્યું"
+        : builderShare > 0.001
+          ? "પેમેન્ટ બાકી છે"
+          : "આ મહિને કોઈ શેર નથી";
 
   return (
     <div className="space-y-4">
@@ -191,7 +194,7 @@ export default function BuilderReceiptPage() {
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-emerald-500/10 px-3 py-3 ring-1 ring-emerald-400/20">
             <div className="text-2xl font-extrabold tabular-nums text-emerald-300">
-              {loading ? "…" : unsold}
+              {loading ? "…" : hasMonthlyUnsoldFlats ? unsold : "—"}
             </div>
             <div className="mt-1 text-[11px] font-medium leading-snug text-emerald-100/90">
               ફ્લેટ્સ — {loading ? "…" : flatsStatusText}

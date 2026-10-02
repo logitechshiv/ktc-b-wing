@@ -31,10 +31,12 @@ async function ensureIndexes() {
       const Flat = (await import("@/models/Flat")).default;
       const Payment = (await import("@/models/Payment")).default;
       const BuilderPayment = (await import("@/models/BuilderPayment")).default;
+      const BuilderMonthlyUnsoldFlats = (await import("@/models/BuilderMonthlyUnsoldFlats")).default;
       await Promise.all([
         Flat.syncIndexes(),
         Payment.syncIndexes(),
         BuilderPayment.syncIndexes(),
+        BuilderMonthlyUnsoldFlats.syncIndexes(),
       ]);
     })().catch((err) => {
       indexSync = null;

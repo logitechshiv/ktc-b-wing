@@ -51,6 +51,7 @@ export type BuilderCommonCollectionFormData = {
   paymentMode: PaymentMode;
   referenceNumber: string;
   notes: string;
+  unsoldFlats: number;
 };
 
 interface Props {
@@ -62,6 +63,8 @@ interface Props {
   onClose: () => void;
   onSubmit: (data: BuilderCommonCollectionFormData) => Promise<void>;
   onSwitchToMember?: () => void;
+  initialMonth?: number;
+  initialYear?: number;
 }
 
 export default function BuilderCommonCollectionModal({
@@ -73,6 +76,8 @@ export default function BuilderCommonCollectionModal({
   onClose,
   onSubmit,
   onSwitchToMember,
+  initialMonth,
+  initialYear,
 }: Props) {
   const now = useMemo(() => new Date(), []);
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -89,6 +94,7 @@ export default function BuilderCommonCollectionModal({
   );
   const [splitLoading, setSplitLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [unsoldFlats, setUnsoldFlats] = useState<number | null>(null);
 
   // Reset fields when modal opens — Amount autofills immediately from cache when possible
   useEffect(() => {
@@ -105,8 +111,8 @@ export default function BuilderCommonCollectionModal({
       return;
     }
 
-    const m = now.getMonth() + 1;
-    const y = now.getFullYear();
+    const m = initialMonth ?? now.getMonth() + 1;
+    const y = initialYear ?? now.getFullYear();
     setMonth(m);
     setYear(y);
     setPaymentDate(new Date().toISOString().slice(0, 10));
@@ -116,6 +122,7 @@ export default function BuilderCommonCollectionModal({
     const cached = peekCache<CommonExpenseSplitStats>(CacheKeys.commonExpenseSplit(m, y));
     if (cached) {
       setSplit(cached);
+      setUnsoldFlats(cached.unsoldFlats);
       setAmount(builderAutofillAmount(cached));
       setNotes(autoNotesFromSplit(cached));
     } else {
@@ -134,6 +141,7 @@ export default function BuilderCommonCollectionModal({
     const cached = peekCache<CommonExpenseSplitStats>(CacheKeys.commonExpenseSplit(month, year));
     if (cached && !cancelled) {
       setSplit(cached);
+      setUnsoldFlats(cached.unsoldFlats);
       if (mode === "edit" && initial && initial.month === month && initial.year === year) {
         setAmount(roundRupeePaise(Number(initial.amount) || 0));
       } else {
@@ -141,11 +149,13 @@ export default function BuilderCommonCollectionModal({
         setNotes(autoNotesFromSplit(cached));
       }
     }
+    if (!cached) setUnsoldFlats(null);
 
     readCommonExpenseSplit(month, year, { force: true })
       .then((data) => {
         if (cancelled) return;
         setSplit(data);
+        setUnsoldFlats(data.unsoldFlats);
         if (mode === "edit" && initial && initial.month === month && initial.year === year) {
           setAmount(roundRupeePaise(Number(initial.amount) || 0));
           setNotes(initial.notes || "");
@@ -171,12 +181,24 @@ export default function BuilderCommonCollectionModal({
     };
   }, [open, month, year, mode, initial]);
 
+  const previewBuilderShare =
+    unsoldFlats === null
+      ? 0
+      : roundRupeePaise((Number(split.perFlatShare) || 0) * unsoldFlats);
   const monthPending =
     mode === "edit" && initial && initial.month === month && initial.year === year
-      ? roundRupeePaise(
-          (Number(split.builderPending) || 0) + (Number(initial.amount) || 0)
+      ? Math.max(
+          0,
+          roundRupeePaise(
+            previewBuilderShare -
+              (Number(split.builderCollected) || 0) +
+              (Number(initial.amount) || 0)
+          )
         )
-      : roundRupeePaise(Number(split.builderPending) || 0);
+      : Math.max(
+          0,
+          roundRupeePaise(previewBuilderShare - (Number(split.builderCollected) || 0))
+        );
 
   const years = useMemo(() => {
     const set = new Set(split.years.length ? split.years : [year]);
@@ -192,6 +214,10 @@ export default function BuilderCommonCollectionModal({
     setLocalError(null);
     if (!amount || amount <= 0) {
       setLocalError("Amount must be greater than 0");
+      return;
+    }
+    if (unsoldFlats === null || !Number.isInteger(unsoldFlats) || unsoldFlats < 0 || unsoldFlats > split.totalFlats) {
+      setLocalError(`Unsold Flats must be a whole number from 0 to ${split.totalFlats}`);
       return;
     }
     if (monthPending > 0 && roundRupeePaise(amount) > monthPending + 0.001) {
@@ -213,6 +239,7 @@ export default function BuilderCommonCollectionModal({
       paymentMode,
       referenceNumber: referenceNumber.trim(),
       notes: notes.trim(),
+      unsoldFlats,
     });
   }
 
@@ -305,7 +332,11 @@ export default function BuilderCommonCollectionModal({
           <div className="rounded-xl bg-orange-50 px-3.5 py-3 text-[11px] leading-relaxed text-orange-800">
             <div className="font-semibold">
               {monthLabel} {year} — Builder Share:{" "}
-              {splitLoading ? "…" : inr(split.builderShare)}
+              {splitLoading
+                ? "…"
+                : unsoldFlats === null
+                  ? "Unsold Flats not set"
+                  : inr(previewBuilderShare)}
             </div>
             <div className="mt-1">
               Collected: {splitLoading ? "…" : inr(split.builderCollected)} · Pending:{" "}
@@ -315,6 +346,40 @@ export default function BuilderCommonCollectionModal({
               Amount auto-fills with remaining Builder Pending for this month.
             </p>
           </div>
+
+          <label className="block text-xs font-semibold text-slate-600">
+            Unsold Flats for This Month <span className="text-rose-500">*</span>
+            <input
+              type="number"
+              min={0}
+              max={split.totalFlats}
+              step={1}
+              inputMode="numeric"
+              value={unsoldFlats ?? ""}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === "") { setUnsoldFlats(null); return; }
+                const next = Number(raw);
+                if (Number.isInteger(next)) {
+                  setUnsoldFlats(next);
+                  if (mode === "add") {
+                    setAmount(
+                      Math.max(
+                        0,
+                        roundRupeePaise(
+                          (Number(split.perFlatShare) || 0) * next -
+                            (Number(split.builderCollected) || 0)
+                        )
+                      )
+                    );
+                  }
+                }
+              }}
+              className={field}
+              required
+              disabled={saving || splitLoading}
+            />
+          </label>
 
           {/* {!splitLoading && split.expenseItems.length > 0 ? (
             <div className="rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-3">
@@ -438,7 +503,7 @@ export default function BuilderCommonCollectionModal({
           </button>
           <button
             type="submit"
-            disabled={saving || splitLoading || amount <= 0 || (mode === "add" && monthPending <= 0)}
+            disabled={saving || splitLoading || unsoldFlats === null || amount <= 0 || (mode === "add" && monthPending <= 0)}
             className="rounded-xl bg-black px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
           >
             {saving

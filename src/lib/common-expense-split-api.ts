@@ -27,7 +27,8 @@ export interface CommonExpenseSplitStats {
   perFlatShare: number;
   expenseCount: number;
   soldFlats: number;
-  unsoldFlats: number;
+  unsoldFlats: number | null;
+  hasMonthlyUnsoldFlats: boolean;
   memberShare: number;
   builderShare: number;
   builderCollected: number;
@@ -52,7 +53,8 @@ export function emptyCommonExpenseSplit(
     perFlatShare: 0,
     expenseCount: 0,
     soldFlats: 0,
-    unsoldFlats: 0,
+    unsoldFlats: null,
+    hasMonthlyUnsoldFlats: false,
     memberShare: 0,
     builderShare: 0,
     builderCollected: 0,
@@ -139,10 +141,13 @@ export async function readCommonExpenseSplit(
       const totalFlats = COMMON_EXPENSE_TOTAL_FLATS;
       const perFlatShare = Math.max(0, Number(data.perFlatShare) || 0);
       const soldFlats = Math.max(0, Number(data.soldFlats) || 0);
-      const unsoldFlats = Math.max(0, Number(data.unsoldFlats) || 0);
+      const hasMonthlyUnsoldFlats = data.hasMonthlyUnsoldFlats === true;
+      const unsoldFlats = hasMonthlyUnsoldFlats
+        ? Math.max(0, Number(data.unsoldFlats) || 0)
+        : null;
       const builderShare = Math.max(
         0,
-        Number(data.builderShare) || perFlatShare * unsoldFlats
+        hasMonthlyUnsoldFlats ? Number(data.builderShare) || perFlatShare * (unsoldFlats || 0) : 0
       );
       const builderCollected = Math.max(0, Number(data.builderCollected) || 0);
       const pendingRaw = Number(data.builderPending);
@@ -164,6 +169,7 @@ export async function readCommonExpenseSplit(
         expenseCount: Math.max(0, Number(data.expenseCount) || 0),
         soldFlats,
         unsoldFlats,
+        hasMonthlyUnsoldFlats,
         memberShare: Math.max(
           0,
           Number(data.memberShare) || perFlatShare * soldFlats

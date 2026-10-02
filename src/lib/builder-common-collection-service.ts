@@ -1,6 +1,6 @@
+import mongoose from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import Expense from "@/models/Expense";
-import Flat from "@/models/Flat";
 import BuilderCommonCollection from "@/models/BuilderCommonCollection";
 import { PAYMENT_MODES, type DbPaymentMode } from "@/models/Payment";
 import {
@@ -15,6 +15,11 @@ import {
   categoryNameMatchesIncluded,
   getIncludedCommonExpenseCategoryNames,
 } from "@/lib/expense-category-common";
+import {
+  getMonthlyUnsoldFlats,
+  parseMonthlyUnsoldFlats,
+  setMonthlyUnsoldFlats,
+} from "@/lib/builder-monthly-unsold-flats-service";
 
 export type BuilderCollectionStatus = "pending" | "partially_paid" | "fully_paid";
 
@@ -41,6 +46,7 @@ export interface BuilderCommonCollectionInput {
   paymentDate: string;
   referenceNumber?: string;
   notes?: string;
+  unsoldFlats: number;
 }
 
 function serialize(doc: {
@@ -130,8 +136,10 @@ export async function sumBuilderCollected(params: {
   if (params.category?.trim()) {
     match.expenseCategory = params.category.trim();
   }
-  if (params.excludeId) {
-    match._id = { $ne: params.excludeId };
+  if (params.excludeId && mongoose.Types.ObjectId.isValid(params.excludeId)) {
+    // Aggregation $ne needs a real ObjectId; a string id would not exclude the
+    // document being edited, so pending would look like ~₹0.03 leftover.
+    match._id = { $ne: new mongoose.Types.ObjectId(params.excludeId) };
   }
 
   const rows = await BuilderCommonCollection.aggregate<{ total: number }>([
@@ -181,7 +189,7 @@ export async function getCategoryBuilderShare(
   const label = included.find((c) => normalizeCategoryName(c) === wantKey);
   if (!label) return null;
 
-  const [monthDocs, unsoldFlats] = await Promise.all([
+  const [monthDocs, monthlyUnsoldFlats] = await Promise.all([
     Expense.find(
       {
         $expr: {
@@ -195,7 +203,7 @@ export async function getCategoryBuilderShare(
     )
       .lean()
       .exec(),
-    Flat.countDocuments({ status: "available" }),
+    getMonthlyUnsoldFlats(month, year),
   ]);
 
   const categoryTotals = new Map<string, { label: string; total: number }>();
@@ -218,7 +226,7 @@ export async function getCategoryBuilderShare(
     }
   }
 
-  const unsold = Number(unsoldFlats) || 0;
+  const unsold = monthlyUnsoldFlats === null ? 0 : Number(monthlyUnsoldFlats) || 0;
   const perFlatShare = computePerFlatShare(totalCommonExpense, COMMON_EXPENSE_TOTAL_FLATS);
   const builderShareTotal = Math.round(perFlatShare * unsold);
 
@@ -266,6 +274,7 @@ function validateInput(body: Record<string, unknown>): {
   const paymentDate = paymentDateRaw.slice(0, 10);
   const referenceNumber = String(body.referenceNumber ?? body.reference ?? "").trim();
   const notes = String(body.notes ?? "").trim();
+  const unsoldFlats = parseMonthlyUnsoldFlats(body.unsoldFlats);
   // Category is no longer collected in UI — month/year pending only
   const expenseCategory =
     String(body.expenseCategory ?? body.category ?? "").trim() ||
@@ -287,6 +296,9 @@ function validateInput(body: Record<string, unknown>): {
   if (!paymentDate || Number.isNaN(Date.parse(paymentDate))) {
     return { ok: false, message: "Valid payment date is required" };
   }
+  if (unsoldFlats === null) {
+    return { ok: false, message: `Unsold Flats must be a whole number from 0 to ${COMMON_EXPENSE_TOTAL_FLATS}` };
+  }
 
   return {
     ok: true,
@@ -299,6 +311,7 @@ function validateInput(body: Record<string, unknown>): {
       paymentDate,
       referenceNumber,
       notes,
+      unsoldFlats,
     },
   };
 }
@@ -308,10 +321,11 @@ export async function getMonthBuilderPending(params: {
   month: number;
   year: number;
   excludeId?: string;
-}): Promise<{ share: number; collected: number; pending: number }> {
+  unsoldFlats?: number;
+}): Promise<{ share: number; collected: number; pending: number; configured: boolean }> {
   await connectDB();
   const included = await getIncludedCommonExpenseCategoryNames();
-  const [monthDocs, unsoldFlats, collected] = await Promise.all([
+  const [monthDocs, storedUnsoldFlats, collected] = await Promise.all([
     Expense.find(
       {
         $expr: {
@@ -325,7 +339,7 @@ export async function getMonthBuilderPending(params: {
     )
       .lean()
       .exec(),
-    Flat.countDocuments({ status: "available" }),
+    getMonthlyUnsoldFlats(params.month, params.year),
     sumBuilderCollected({
       month: params.month,
       year: params.year,
@@ -342,14 +356,20 @@ export async function getMonthBuilderPending(params: {
     totalCommonExpense += amount;
   }
 
-  const unsold = Number(unsoldFlats) || 0;
-  const perFlat = computePerFlatShare(totalCommonExpense, COMMON_EXPENSE_TOTAL_FLATS);
+  const configuredUnsoldFlats = params.unsoldFlats ?? storedUnsoldFlats;
+  const unsold = configuredUnsoldFlats === null ? 0 : Number(configuredUnsoldFlats) || 0;
+  // Same rounding as Common Expense Split: paise-round per-flat, then × unsold.
+  // Using unrounded per-flat × 19 produced ₹52,672.02 vs UI ₹52,671.99.
+  const perFlat = roundRupeePaise(
+    computePerFlatShare(totalCommonExpense, COMMON_EXPENSE_TOTAL_FLATS)
+  );
   const share = roundRupeePaise(perFlat * unsold);
   const collectedRounded = roundRupeePaise(collected);
   return {
     share,
     collected: collectedRounded,
     pending: Math.max(0, roundRupeePaise(share - collectedRounded)),
+    configured: configuredUnsoldFlats !== null,
   };
 }
 
@@ -358,15 +378,19 @@ async function assertWithinMonthPending(params: {
   year: number;
   amount: number;
   excludeId?: string;
+  unsoldFlats?: number;
 }): Promise<{ ok: true; pending: number; share: number } | { ok: false; message: string }> {
   const row = await getMonthBuilderPending(params);
+  if (!row.configured) {
+    return { ok: false, message: "Unsold Flats are not set for this month" };
+  }
   if (row.share <= 0) {
     return {
       ok: false,
       message: "No Builder Share for this month — add common expenses first",
     };
   }
-  if (roundRupeePaise(params.amount) > row.pending + 0.001) {
+  if (roundRupeePaise(params.amount) > row.pending + 0.01) {
     return {
       ok: false,
       message: `Amount exceeds Builder Pending (pending ₹${row.pending.toLocaleString("en-IN")}, share ₹${row.share.toLocaleString("en-IN")})`,
@@ -390,8 +414,11 @@ export async function createBuilderCommonCollection(
     month: data.month,
     year: data.year,
     amount: data.amount,
+    unsoldFlats: data.unsoldFlats,
   });
   if (!check.ok) throw new Error(check.message);
+
+  await setMonthlyUnsoldFlats(data.month, data.year, data.unsoldFlats);
 
   await connectDB();
   const doc = await BuilderCommonCollection.create({
@@ -425,8 +452,11 @@ export async function updateBuilderCommonCollection(
     year: data.year,
     amount: data.amount,
     excludeId: id,
+    unsoldFlats: data.unsoldFlats,
   });
   if (!check.ok) throw new Error(check.message);
+
+  await setMonthlyUnsoldFlats(data.month, data.year, data.unsoldFlats);
 
   await connectDB();
   const doc = await BuilderCommonCollection.findByIdAndUpdate(

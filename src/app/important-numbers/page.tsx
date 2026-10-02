@@ -277,9 +277,9 @@ export default function ImportantNumbersPage() {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold text-navy">મહત્વના નંબર</h1>
+          <h1 className="text-lg font-bold text-navy">જરૂરી નંબરો</h1>
           <p className="mt-0.5 text-xs text-slate-500">
-            સોસાયટીના મહત્વના સંપર્ક નંબર
+            સોસાયટીના જરૂરી સંપર્ક નંબર
           </p>
         </div>
         {isSuperAdmin && (
@@ -317,7 +317,7 @@ export default function ImportantNumbersPage() {
           </div>
         ) : publicList.length === 0 ? (
           <div className="rounded-[22px] bg-white px-4 py-10 text-center text-sm text-slate-400 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80">
-            કોઈ મહત્વના નંબર ઉપલબ્ધ નથી
+            કોઈ જરૂરી નંબરો ઉપલબ્ધ નથી
           </div>
         ) : (
           <ul className="space-y-3">
@@ -356,7 +356,7 @@ export default function ImportantNumbersPage() {
         <section className="overflow-hidden rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,40,80,0.06)] ring-1 ring-slate-100/80 sm:p-5">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
-              <h2 className="text-[15px] font-bold text-navy">મહત્વના નંબર મેનેજમેન્ટ</h2>
+              <h2 className="text-[15px] font-bold text-navy">જરૂરી નંબરો</h2>
               <p className="mt-0.5 text-[11px] text-slate-400">
                 સંપર્ક ઉમેરો, સુધારો અથવા કાઢો · ફક્ત એડમિન
               </p>
