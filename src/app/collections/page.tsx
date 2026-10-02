@@ -770,7 +770,7 @@ export default function CollectionsPage() {
     }
   }
 
-  function openCollectForm(lockedPurposeId?: string | null) {
+  function openCollectForm(presetPurposeId?: string | null) {
     setFormSelectedKeys([]);
     setFormPendingFlats([]);
     setFormUnsoldPending([]);
@@ -780,21 +780,19 @@ export default function CollectionsPage() {
     setFormBuilderName("");
     setFormPurposeSearch("");
     setError(null);
+    setFormPurposeLocked(false);
+    setFormTab("sold");
 
-    const lockedId = lockedPurposeId ?? expandedPurposeId;
-    if (lockedId) {
+    const presetId = presetPurposeId ?? selectedPurposeId;
+    if (presetId) {
       const selected =
-        purposes.find((p) => p.id === lockedId) ||
-        (purposeDetails?.purpose.id === lockedId ? purposeDetails.purpose : null);
-      setFormPurposeId(lockedId);
+        purposes.find((p) => p.id === presetId) ||
+        (purposeDetails?.purpose.id === presetId ? purposeDetails.purpose : null);
+      setFormPurposeId(presetId);
       setFormAmount(selected?.amountPerFlat ?? selected?.amount ?? 0);
-      setFormPurposeLocked(true);
-      setFormTab("sold");
     } else {
       setFormPurposeId("");
       setFormAmount(0);
-      setFormPurposeLocked(false);
-      setFormTab("sold");
     }
     setShowForm(true);
   }

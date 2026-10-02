@@ -201,15 +201,9 @@ export default function CollectionModal({
             <select
               value={formPurposeId}
               onChange={(e) => onPurposeChange(e.target.value)}
-              disabled={formPurposeLocked}
-              className={
-                formSelect +
-                (formPurposeLocked
-                  ? " cursor-default bg-slate-50 text-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                  : "")
-              }
+              className={formSelect}
             >
-              {!formPurposeLocked && <option value="">Select purpose…</option>}
+              <option value="">Select purpose…</option>
               {purposeOptions.map((p) => (
                 <option key={p.id} value={p.id}>
                   {normalizeCollectionScope(p.collectionScope) === "all" ? "All · " : "Sold · "}
@@ -217,11 +211,6 @@ export default function CollectionModal({
                 </option>
               ))}
             </select>
-            {formPurposeLocked && (
-              <span className="mt-1 block text-[11px] font-normal text-slate-400">
-                Purpose is locked to the currently selected purpose.
-              </span>
-            )}
           </label>
 
           <div className="block text-xs font-semibold text-slate-600">
