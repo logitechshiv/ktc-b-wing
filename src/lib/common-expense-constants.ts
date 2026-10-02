@@ -56,6 +56,16 @@ export function defaultIncludeInCommonExpense(name: string): boolean {
   return LEGACY_INCLUDED_SET.has(key);
 }
 
+/** Sold = total (52) − unsold. Unsold is the monthly builder count. */
+export function soldFlatsFromUnsold(
+  unsoldFlats: number,
+  totalFlats = COMMON_EXPENSE_TOTAL_FLATS
+): number {
+  const total = totalFlats > 0 ? totalFlats : COMMON_EXPENSE_TOTAL_FLATS;
+  const unsold = Math.max(0, Math.min(total, Math.floor(Number(unsoldFlats) || 0)));
+  return total - unsold;
+}
+
 export function computePerFlatShare(totalCommonExpense: number, totalFlats = COMMON_EXPENSE_TOTAL_FLATS) {
   const total = Number.isFinite(totalCommonExpense) ? Math.max(0, totalCommonExpense) : 0;
   const flats = totalFlats > 0 ? totalFlats : COMMON_EXPENSE_TOTAL_FLATS;

@@ -5,6 +5,7 @@ import { inr, fmtDateDMY } from "@/lib/format";
 import { formSelectFilter } from "@/lib/form-styles";
 import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
 import { readCurrentUser } from "@/lib/auth-client";
+import { roundRupeePaise, soldFlatsFromUnsold } from "@/lib/common-expense-constants";
 import {
   COMMON_EXPENSE_TOTAL_FLATS,
   emptyCommonExpenseSplit,
@@ -165,15 +166,13 @@ export default function CommonExpenseSplit() {
   const totalFlats = COMMON_EXPENSE_TOTAL_FLATS;
   const monthTotal = Number.isFinite(stats.totalCommonExpense) ? stats.totalCommonExpense : 0;
   const perFlat = Number.isFinite(stats.perFlatShare) ? stats.perFlatShare : 0;
-  const sold = Number.isFinite(stats.soldFlats) ? stats.soldFlats : 0;
   const hasMonthlyUnsoldFlats = stats.hasMonthlyUnsoldFlats;
   const unsold = hasMonthlyUnsoldFlats && Number.isFinite(stats.unsoldFlats) ? Number(stats.unsoldFlats) : 0;
-  const soldTotal = Number.isFinite(stats.memberShare)
-    ? stats.memberShare
-    : perFlat * sold;
+  const sold = soldFlatsFromUnsold(unsold, totalFlats);
+  const soldTotal = roundRupeePaise(perFlat * sold);
   const unsoldTotal = Number.isFinite(stats.builderShare)
     ? stats.builderShare
-    : perFlat * unsold;
+    : roundRupeePaise(perFlat * unsold);
   const builderCollected = Number.isFinite(stats.builderCollected) ? stats.builderCollected : 0;
   const builderPending = Number.isFinite(stats.builderPending) ? stats.builderPending : 0;
   const monthLabel = MONTHS.find((m) => m.value === month)?.label ?? "";

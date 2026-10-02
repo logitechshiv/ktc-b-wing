@@ -1,12 +1,12 @@
 import { connectDB } from "@/lib/mongodb";
 import Expense from "@/models/Expense";
-import Flat from "@/models/Flat";
 import {
   COMMON_EXPENSE_TOTAL_FLATS,
   allocateWholeRupeeShares,
   computePerFlatShare,
   normalizeCategoryName,
   roundRupeePaise,
+  soldFlatsFromUnsold,
 } from "@/lib/common-expense-constants";
 import {
   categoryNameMatchesIncluded,
@@ -71,7 +71,6 @@ export async function getCommonExpenseSplit(
     excludedCategories,
     monthDocs,
     yearRows,
-    soldFlats,
     monthlyUnsoldFlats,
     collectedByCategory,
   ] = await Promise.all([
@@ -98,7 +97,6 @@ export async function getCommonExpenseSplit(
       },
       { $sort: { _id: -1 } },
     ]).exec(),
-    Flat.countDocuments({ status: "sold" }),
     getMonthlyUnsoldFlats(m, y),
     sumBuilderCollectedByCategory(m, y),
   ]);
@@ -152,8 +150,8 @@ export async function getCommonExpenseSplit(
   const perFlatRaw = computePerFlatShare(totalCommonExpense, totalFlats);
   // Display / multiply using 2-decimal per-flat (e.g. 1310.67 × 32 = 41941.44)
   const perFlatShare = roundRupeePaise(perFlatRaw);
-  const sold = Number(soldFlats) || 0;
   const unsold = monthlyUnsoldFlats === null ? 0 : Number(monthlyUnsoldFlats) || 0;
+  const sold = soldFlatsFromUnsold(unsold, totalFlats);
   const memberShare = roundRupeePaise(perFlatShare * sold);
   const builderShare = roundRupeePaise(perFlatShare * unsold);
 

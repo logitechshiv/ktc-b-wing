@@ -1,4 +1,4 @@
-import { COMMON_EXPENSE_TOTAL_FLATS, roundRupeePaise } from "@/lib/common-expense-constants";
+import { COMMON_EXPENSE_TOTAL_FLATS, roundRupeePaise, soldFlatsFromUnsold } from "@/lib/common-expense-constants";
 import { CacheKeys, cachedQuery } from "@/lib/data-cache";
 import type { BuilderCollectionStatus } from "@/lib/builder-common-collection-service";
 
@@ -52,7 +52,7 @@ export function emptyCommonExpenseSplit(
     totalFlats: COMMON_EXPENSE_TOTAL_FLATS,
     perFlatShare: 0,
     expenseCount: 0,
-    soldFlats: 0,
+    soldFlats: COMMON_EXPENSE_TOTAL_FLATS,
     unsoldFlats: null,
     hasMonthlyUnsoldFlats: false,
     memberShare: 0,
@@ -140,14 +140,15 @@ export async function readCommonExpenseSplit(
       const totalCommonExpense = Math.max(0, Number(data.totalCommonExpense) || 0);
       const totalFlats = COMMON_EXPENSE_TOTAL_FLATS;
       const perFlatShare = Math.max(0, Number(data.perFlatShare) || 0);
-      const soldFlats = Math.max(0, Number(data.soldFlats) || 0);
       const hasMonthlyUnsoldFlats = data.hasMonthlyUnsoldFlats === true;
       const unsoldFlats = hasMonthlyUnsoldFlats
         ? Math.max(0, Number(data.unsoldFlats) || 0)
         : null;
+      const unsoldCount = unsoldFlats ?? 0;
+      const soldFlats = soldFlatsFromUnsold(unsoldCount, totalFlats);
       const builderShare = Math.max(
         0,
-        hasMonthlyUnsoldFlats ? Number(data.builderShare) || perFlatShare * (unsoldFlats || 0) : 0
+        hasMonthlyUnsoldFlats ? Number(data.builderShare) || perFlatShare * unsoldCount : 0
       );
       const builderCollected = Math.max(0, Number(data.builderCollected) || 0);
       const pendingRaw = Number(data.builderPending);
