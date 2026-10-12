@@ -363,7 +363,7 @@ export default function CommonExpenseSplit() {
                 </Link>
               </div>
 
-              <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-rose-100 bg-white shadow-2xs">
+              <ul className="max-h-[420px] overflow-y-auto divide-y divide-slate-100 rounded-xl border border-rose-100 bg-white shadow-2xs overscroll-contain">
                 {stats.expenseItems.map((item, idx) => (
                   <li
                     key={item.id || idx}
