@@ -363,75 +363,18 @@ export default function CommonExpenseSplit() {
                 </Link>
               </div>
 
-              <ul className="max-h-[420px] overflow-y-auto divide-y divide-slate-100 rounded-xl border border-rose-100 bg-white shadow-2xs overscroll-contain">
+              <ul className="max-h-56 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-rose-100 bg-white shadow-2xs">
                 {stats.expenseItems.map((item, idx) => (
                   <li
                     key={item.id || idx}
-                    className="p-3 transition hover:bg-slate-50/60"
+                    className="flex items-start justify-between gap-3 px-3.5 py-2.5 transition hover:bg-slate-50/60"
                   >
-                    {/* Top Row: Category badge, Expense type badge, Title, Amount */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-                            {item.category}
-                          </span>
-                          {item.expenseType ? (
-                            <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                              {item.expenseType === "common"
-                                ? "Common Expense"
-                                : "General Expense"}
-                            </span>
-                          ) : null}
-                        </div>
-                        <h4 className="mt-1 text-xs font-bold text-navy sm:text-sm leading-snug">
-                          {displayExpenseTitle(item.titleGujarati, item.title)}
-                        </h4>
-                      </div>
-
-                      <div className="shrink-0 text-sm font-bold tabular-nums text-rose-500 sm:text-base">
-                        {inr(item.amount)}
-                      </div>
-                    </div>
-
-                    {/* Note if available */}
-                    {item.notes?.trim() && (
-                      <div className="mt-1.5 whitespace-pre-line text-[11px] font-medium leading-relaxed text-slate-600">
-                        {item.notes.trim().startsWith("નોંધ:")
-                          ? item.notes.trim()
-                          : `નોંધ: ${item.notes.trim()}`}
-                      </div>
-                    )}
-
-                    {/* Date and Bill */}
-                    <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-400">
-                      {item.date && (
-                        <span className="tabular-nums font-medium">
-                          {fmtDateDMY(item.date)}
-                        </span>
-                      )}
-                      {item.hasBill && item.billUrl && (
-                        <a
-                          href={item.billUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 font-semibold text-sky-600 hover:underline"
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-3 w-3 text-sky-600"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            aria-hidden
-                          >
-                            <path d="M8 3h6l4 4v14H8z" />
-                            <path d="M14 3v4h4M10 12h6M10 16h6" />
-                          </svg>
-                          Bill
-                        </a>
-                      )}
-                    </div>
+                    <span className="min-w-0 flex-1 break-words text-xs font-bold leading-snug text-navy sm:text-sm">
+                      {displayExpenseTitle(item.titleGujarati, item.title)}
+                    </span>
+                    <span className="shrink-0 text-xs font-bold tabular-nums text-rose-500 sm:text-sm">
+                      {inr(item.amount)}
+                    </span>
                   </li>
                 ))}
               </ul>
