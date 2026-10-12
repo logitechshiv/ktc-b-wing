@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { Calendar, ChevronDown, Check } from "lucide-react";
 import { inr } from "@/lib/format";
 import { readCurrentUser, type SafeUser } from "@/lib/auth-client";
 import { displayExpenseTitle } from "@/lib/expense-utils";
@@ -43,6 +44,33 @@ function expensesCacheKey(q: string, category: string) {
   return CacheKeys.expenses(q.trim(), category || "all");
 }
 
+function getExpenseMonthKey(dateStr?: string | Date): string {
+  if (!dateStr) return "Unknown";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) {
+      const str = String(dateStr).slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(str)) return str;
+      return "Unknown";
+    }
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    return `${year}-${month}`;
+  } catch {
+    return "Unknown";
+  }
+}
+
+function formatMonthYearLabel(monthKey: string): string {
+  if (monthKey === "Unknown" || !monthKey) return "Other Expenses";
+  const [yearStr, monthStr] = monthKey.split("-");
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  if (isNaN(year) || isNaN(month)) return monthKey;
+  const date = new Date(year, month - 1, 1);
+  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
 function toRow(e: ExpenseRecord) {
   return {
     id: e.id,
@@ -69,6 +97,12 @@ function toRow(e: ExpenseRecord) {
 export default function ExpensesPage() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [monthDropdownOpen, setMonthDropdownOpen] = useState(false);
+  const [moreCategoriesOpen, setMoreCategoriesOpen] = useState(false);
+
+  const monthDropdownRef = useRef<HTMLDivElement>(null);
+  const moreCategoriesRef = useRef<HTMLDivElement>(null);
 
   const initialExpenses = peekCache<ExpensesCachePayload>(expensesCacheKey("", "all"));
   const initialCategories = peekCache<ExpenseCategoryRecord[]>(CacheKeys.expenseCategories());
@@ -115,7 +149,20 @@ export default function ExpensesPage() {
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
 
-  const filtersActive = q.trim() !== "" || category !== "all";
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (monthDropdownRef.current && !monthDropdownRef.current.contains(event.target as Node)) {
+        setMonthDropdownOpen(false);
+      }
+      if (moreCategoriesRef.current && !moreCategoriesRef.current.contains(event.target as Node)) {
+        setMoreCategoriesOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filtersActive = q.trim() !== "" || category !== "all" || selectedMonth !== "all";
   /** List order is fixed by createdAt DESC (newest first) — drag reorder disabled. */
   const canReorder = false;
 
@@ -204,6 +251,57 @@ export default function ExpensesPage() {
     }
     return ["all", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
   }, [managedCategories, expenseCategories]);
+
+  const PRIMARY_CATEGORY_LIMIT = 5;
+  const primaryCategories = useMemo(() => {
+    const nonAll = filterCategories.filter((c) => c !== "all");
+    return ["all", ...nonAll.slice(0, PRIMARY_CATEGORY_LIMIT)];
+  }, [filterCategories]);
+
+  const extraCategories = useMemo(() => {
+    const nonAll = filterCategories.filter((c) => c !== "all");
+    return nonAll.slice(PRIMARY_CATEGORY_LIMIT);
+  }, [filterCategories]);
+
+  const isExtraCategoryActive = extraCategories.includes(category);
+
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    for (const exp of expenses) {
+      const key = getExpenseMonthKey(exp.expenseDate);
+      if (key && key !== "Unknown") {
+        set.add(key);
+      }
+    }
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [expenses]);
+
+  const groupedExpenses = useMemo(() => {
+    const map = new Map<string, ExpenseRecord[]>();
+    for (const exp of expenses) {
+      const key = getExpenseMonthKey(exp.expenseDate);
+      if (!map.has(key)) {
+        map.set(key, []);
+      }
+      map.get(key)!.push(exp);
+    }
+    const sortedKeys = Array.from(map.keys()).sort((a, b) => b.localeCompare(a));
+    return sortedKeys.map((key) => {
+      const list = map.get(key)!;
+      const total = list.reduce((sum, item) => sum + item.amount, 0);
+      return {
+        key,
+        label: formatMonthYearLabel(key),
+        total,
+        expenses: list,
+      };
+    });
+  }, [expenses]);
+
+  const displayedGroups = useMemo(() => {
+    if (selectedMonth === "all") return groupedExpenses;
+    return groupedExpenses.filter((g) => g.key === selectedMonth);
+  }, [groupedExpenses, selectedMonth]);
 
   function openAdd() {
     setModalMode("add");
@@ -444,7 +542,16 @@ export default function ExpensesPage() {
     setOverId(null);
   }
 
-  const displayTotal = filtersActive ? shownTotal : summaryTotal || shownTotal;
+  const displayTotal = useMemo(() => {
+    if (selectedMonth !== "all") {
+      const target = groupedExpenses.find((g) => g.key === selectedMonth);
+      return target ? target.total : 0;
+    }
+    if (filtersActive) {
+      return shownTotal;
+    }
+    return summaryTotal || shownTotal;
+  }, [selectedMonth, groupedExpenses, filtersActive, shownTotal, summaryTotal]);
 
   return (
     <div className="space-y-4">
@@ -475,7 +582,7 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      {/* Tablet / desktop header — unchanged */}
+      {/* Tablet / desktop header */}
       <div className="hidden items-end justify-between gap-3 sm:flex">
         <div>
           <h1 className="text-lg font-bold text-navy">Expenses</h1>
@@ -498,29 +605,146 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search expense name or category"
-        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-brand"
-      />
+      {/* Search & Month Filter Row (Filter beside search as requested) */}
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search expense name or category"
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-brand shadow-2xs"
+          />
+        </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-0.5 text-xs">
-        {filterCategories.map((c) => (
+        {/* Month Filter Dropdown next to search */}
+        <div ref={monthDropdownRef} className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setMonthDropdownOpen((v) => !v)}
+            className="flex h-[42px] w-full sm:w-auto items-center justify-between sm:justify-start gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
+          >
+            <Calendar className="h-4 w-4 text-brand shrink-0" />
+            <span>{selectedMonth === "all" ? "All Months" : formatMonthYearLabel(selectedMonth)}</span>
+            <ChevronDown
+              className={
+                "h-3.5 w-3.5 text-slate-400 transition-transform " +
+                (monthDropdownOpen ? "rotate-180" : "")
+              }
+            />
+          </button>
+
+          {monthDropdownOpen && (
+            <div className="absolute right-0 z-30 mt-1.5 w-52 max-h-64 overflow-y-auto rounded-xl border border-slate-100 bg-white p-1 shadow-lg">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMonth("all");
+                  setMonthDropdownOpen(false);
+                }}
+                className={
+                  "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition " +
+                  (selectedMonth === "all"
+                    ? "bg-brand/10 font-bold text-brand"
+                    : "text-slate-700 hover:bg-slate-50")
+                }
+              >
+                <span>All Months</span>
+                {selectedMonth === "all" && <Check className="h-3.5 w-3.5 text-brand" />}
+              </button>
+              {availableMonths.map((mKey) => {
+                const isSel = selectedMonth === mKey;
+                return (
+                  <button
+                    key={mKey}
+                    type="button"
+                    onClick={() => {
+                      setSelectedMonth(mKey);
+                      setMonthDropdownOpen(false);
+                    }}
+                    className={
+                      "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition " +
+                      (isSel
+                        ? "bg-brand/10 font-bold text-brand"
+                        : "text-slate-700 hover:bg-slate-50")
+                    }
+                  >
+                    <span>{formatMonthYearLabel(mKey)}</span>
+                    {isSel && <Check className="h-3.5 w-3.5 text-brand" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Category Pills Row with More Categories */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-0.5 text-xs">
+        {primaryCategories.map((c) => (
           <button
             key={c}
             type="button"
             onClick={() => setCategory(c)}
             className={
-              "shrink-0 rounded-full border px-3 py-1 font-medium transition " +
+              "shrink-0 rounded-full border px-3.5 py-1.5 font-medium transition " +
               (category === c
-                ? "border-brand bg-brand text-white"
-                : "border-slate-200 bg-white text-slate-500")
+                ? "border-brand bg-brand text-white shadow-2xs"
+                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")
             }
           >
             {c === "all" ? "All" : c}
           </button>
         ))}
+
+        {extraCategories.length > 0 && (
+          <div ref={moreCategoriesRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setMoreCategoriesOpen((v) => !v)}
+              className={
+                "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 font-medium transition " +
+                (isExtraCategoryActive
+                  ? "border-brand bg-brand text-white shadow-2xs"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")
+              }
+            >
+              <span>{isExtraCategoryActive ? category : "More Categories"}</span>
+              <ChevronDown
+                className={
+                  "h-3 w-3 transition-transform " +
+                  (moreCategoriesOpen ? "rotate-180" : "")
+                }
+              />
+            </button>
+
+            {moreCategoriesOpen && (
+              <div className="absolute left-0 z-30 mt-1.5 w-56 max-h-60 overflow-y-auto rounded-xl border border-slate-100 bg-white p-1 shadow-lg">
+                {extraCategories.map((c) => {
+                  const isSel = category === c;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => {
+                        setCategory(c);
+                        setMoreCategoriesOpen(false);
+                      }}
+                      className={
+                        "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition " +
+                        (isSel
+                          ? "bg-brand/10 font-bold text-brand"
+                          : "text-slate-700 hover:bg-slate-50")
+                      }
+                    >
+                      <span>{c}</span>
+                      {isSel && <Check className="h-3.5 w-3.5 text-brand" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {isSuperAdmin && (
@@ -671,40 +895,60 @@ export default function ExpensesPage() {
         </p>
       )}
 
-      <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-        {loading ? (
-          <p className="py-10 text-center text-sm text-slate-400">Loading expenses…</p>
-        ) : (
-          <>
-            <ul className="divide-y divide-slate-100">
-              {expenses.map((e) => (
-                <ExpenseRow
-                  key={e.id}
-                  expense={toRow(e)}
-                  isSuperAdmin={isSuperAdmin}
-                  canReorder={canReorder}
-                  isDragging={dragId === e.id}
-                  isDragOver={overId === e.id}
-                  onEdit={() => openEdit(e)}
-                  onDelete={() => {
-                    setDeleteError(null);
-                    setDeleteTarget(e);
-                  }}
-                  onWhatsappShare={() => void handleWhatsappShare(e)}
-                  onDragStart={(ev) => onDragStart(e.id, ev)}
-                  onDragOver={(ev) => onDragOver(e.id, ev)}
-                  onDragLeave={() => onDragLeave(e.id)}
-                  onDrop={(ev) => void onDrop(e.id, ev)}
-                  onDragEnd={onDragEnd}
-                />
-              ))}
-            </ul>
-            {expenses.length === 0 && (
-              <p className="py-10 text-center text-sm text-slate-400">No expenses match your filters.</p>
-            )}
-          </>
-        )}
-      </section>
+      {loading ? (
+        <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white p-10 text-center text-sm text-slate-400 shadow-sm">
+          Loading expenses…
+        </section>
+      ) : displayedGroups.length === 0 ? (
+        <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white p-10 text-center text-sm text-slate-400 shadow-sm">
+          No expenses match your filters.
+        </section>
+      ) : (
+        <div className="space-y-5">
+          {displayedGroups.map((group) => (
+            <section
+              key={group.key}
+              className="overflow-hidden rounded-2xl border border-sky-100/90 bg-white shadow-sm transition hover:shadow-md"
+            >
+              {/* Month Card Header */}
+              <div className="flex items-center justify-between border-b border-sky-100/80 bg-sky-50/70 px-4 py-3 sm:px-5">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-100 text-brand">
+                    <Calendar className="h-4 w-4" />
+                  </div>
+                  <h2 className="text-sm font-bold text-navy sm:text-base">
+                    {group.label}
+                  </h2>
+                </div>
+                <div className="text-right text-xs font-semibold sm:text-sm">
+                  <span className="text-slate-500">Total Expense : </span>
+                  <span className="font-bold tabular-nums text-rose-500">
+                    {inr(group.total)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Month Expense Entries */}
+              <ul className="divide-y divide-slate-100">
+                {group.expenses.map((e) => (
+                  <ExpenseRow
+                    key={e.id}
+                    expense={toRow(e)}
+                    isSuperAdmin={isSuperAdmin}
+                    canReorder={false}
+                    onEdit={() => openEdit(e)}
+                    onDelete={() => {
+                      setDeleteError(null);
+                      setDeleteTarget(e);
+                    }}
+                    onWhatsappShare={() => void handleWhatsappShare(e)}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
 
       <ExpenseModal
         open={modalOpen}

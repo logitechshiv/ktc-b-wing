@@ -29,10 +29,16 @@ export interface CommonExpenseCategoryShare {
 }
 
 export interface CommonExpenseItemLine {
+  id?: string;
   category: string;
+  expenseType?: string;
   title: string;
   titleGujarati: string;
   amount: number;
+  date?: string;
+  notes?: string;
+  hasBill?: boolean;
+  billUrl?: string;
 }
 
 export interface CommonExpenseSplitResult {
@@ -85,8 +91,19 @@ export async function getCommonExpenseSplit(
           ],
         },
       },
-      { category: 1, amount: 1, expenseTitle: 1, expenseTitleGujarati: 1, expenseDate: 1 }
+      {
+        category: 1,
+        expenseType: 1,
+        amount: 1,
+        expenseTitle: 1,
+        expenseTitleGujarati: 1,
+        expenseDate: 1,
+        notes: 1,
+        billImage: 1,
+        billImages: 1,
+      }
     )
+      .sort({ expenseDate: -1, createdAt: -1 })
       .lean()
       .exec(),
     Expense.aggregate<{ _id: number }>([
@@ -107,9 +124,21 @@ export async function getCommonExpenseSplit(
   let expenseCount = 0;
 
   for (const doc of monthDocs) {
-    const category = String((doc as { category?: string }).category || "");
+    const d = doc as {
+      _id?: { toString(): string };
+      category?: string;
+      expenseType?: string;
+      expenseTitle?: string;
+      expenseTitleGujarati?: string;
+      amount?: number;
+      expenseDate?: Date;
+      notes?: string;
+      billImage?: string;
+      billImages?: string[];
+    };
+    const category = String(d.category || "");
     if (!categoryNameMatchesIncluded(category, includedCategories)) continue;
-    const amount = Number((doc as { amount?: number }).amount) || 0;
+    const amount = Number(d.amount) || 0;
     if (!Number.isFinite(amount) || amount <= 0) continue;
     totalCommonExpense += amount;
     expenseCount += 1;
@@ -123,13 +152,18 @@ export async function getCommonExpenseSplit(
     } else {
       categoryTotals.set(key, { label, total: amount });
     }
+    const billUrl = d.billImages?.[0] || d.billImage || "";
     expenseItems.push({
+      id: d._id ? d._id.toString() : "",
       category: label,
-      title: String((doc as { expenseTitle?: string }).expenseTitle || "").trim(),
-      titleGujarati: String(
-        (doc as { expenseTitleGujarati?: string }).expenseTitleGujarati || ""
-      ).trim(),
+      expenseType: d.expenseType || "general",
+      title: String(d.expenseTitle || "").trim(),
+      titleGujarati: String(d.expenseTitleGujarati || "").trim(),
       amount,
+      date: d.expenseDate ? new Date(d.expenseDate).toISOString() : "",
+      notes: String(d.notes || "").trim(),
+      hasBill: Boolean(billUrl || (d.billImages && d.billImages.length > 0)),
+      billUrl,
     });
   }
   expenseItems.sort((a, b) => b.amount - a.amount || a.category.localeCompare(b.category));

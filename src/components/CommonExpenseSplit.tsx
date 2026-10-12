@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { inr, fmtDateDMY } from "@/lib/format";
+import { displayExpenseTitle } from "@/lib/expense-utils";
 import { formSelectFilter } from "@/lib/form-styles";
 import { notifyDataChanged, subscribeDataChanged } from "@/lib/data-sync";
 import { readCurrentUser } from "@/lib/auth-client";
@@ -85,6 +87,7 @@ export default function CommonExpenseSplit() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [showCommonExpenses, setShowCommonExpenses] = useState(false);
 
   const [builderRows, setBuilderRows] = useState<BuilderCommonCollectionRecord[]>([]);
   const [builderRowsLoading, setBuilderRowsLoading] = useState(false);
@@ -308,18 +311,133 @@ export default function CommonExpenseSplit() {
       ) : null}
 
       <div className="mt-4 space-y-3">
-        <StatBox
-          value={loading ? "…" : inr(monthTotal)}
-          label={`${monthLabel} ${year} — common total`}
-          hint={
-            loading
-              ? "Loading…"
-              : stats.expenseCount
-                ? `${stats.expenseCount} expense entries in common categories`
-                : "No common expenses in this month"
-          }
-          tone="rose"
-        />
+        {/* Common Total Card with Dynamic List of Included Expenses */}
+        <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4 transition shadow-2xs">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-2xl font-extrabold tabular-nums leading-none text-rose-600 sm:text-3xl">
+                {loading ? "…" : inr(monthTotal)}
+              </div>
+              <div className="mt-2 text-xs font-semibold leading-snug text-slate-700 sm:text-sm">
+                {monthLabel} {year} — common total
+              </div>
+              <div className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                {loading
+                  ? "Loading…"
+                  : stats.expenseCount
+                    ? `${stats.expenseCount} expense entries in common categories`
+                    : "No common expenses in this month"}
+              </div>
+            </div>
+
+            {!loading && stats.expenseItems.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowCommonExpenses((v) => !v)}
+                className="flex items-center gap-1 rounded-full border border-rose-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-700 shadow-2xs hover:bg-rose-50 transition"
+              >
+                <span>{showCommonExpenses ? "Hide list" : "Show list"}</span>
+                <span
+                  className={
+                    "inline-block transition-transform text-xs " +
+                    (showCommonExpenses ? "rotate-180" : "")
+                  }
+                  aria-hidden
+                >
+                  ▾
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* List of expenses contributing to this common total */}
+          {!loading && showCommonExpenses && stats.expenseItems.length > 0 && (
+            <div className="mt-3.5 space-y-2 border-t border-rose-100/90 pt-3">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500">
+                <span>ખર્ચ વિગત (Included Expenses):</span>
+                <Link
+                  href="/expenses"
+                  className="font-semibold text-brand hover:underline"
+                >
+                  View All Expenses →
+                </Link>
+              </div>
+
+              <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-rose-100 bg-white shadow-2xs">
+                {stats.expenseItems.map((item, idx) => (
+                  <li
+                    key={item.id || idx}
+                    className="p-3 transition hover:bg-slate-50/60"
+                  >
+                    {/* Top Row: Category badge, Expense type badge, Title, Amount */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                            {item.category}
+                          </span>
+                          {item.expenseType ? (
+                            <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                              {item.expenseType === "common"
+                                ? "Common Expense"
+                                : "General Expense"}
+                            </span>
+                          ) : null}
+                        </div>
+                        <h4 className="mt-1 text-xs font-bold text-navy sm:text-sm leading-snug">
+                          {displayExpenseTitle(item.titleGujarati, item.title)}
+                        </h4>
+                      </div>
+
+                      <div className="shrink-0 text-sm font-bold tabular-nums text-rose-500 sm:text-base">
+                        {inr(item.amount)}
+                      </div>
+                    </div>
+
+                    {/* Note if available */}
+                    {item.notes?.trim() && (
+                      <div className="mt-1.5 whitespace-pre-line text-[11px] font-medium leading-relaxed text-slate-600">
+                        {item.notes.trim().startsWith("નોંધ:")
+                          ? item.notes.trim()
+                          : `નોંધ: ${item.notes.trim()}`}
+                      </div>
+                    )}
+
+                    {/* Date and Bill */}
+                    <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-400">
+                      {item.date && (
+                        <span className="tabular-nums font-medium">
+                          {fmtDateDMY(item.date)}
+                        </span>
+                      )}
+                      {item.hasBill && item.billUrl && (
+                        <a
+                          href={item.billUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 font-semibold text-sky-600 hover:underline"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-3 w-3 text-sky-600"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            aria-hidden
+                          >
+                            <path d="M8 3h6l4 4v14H8z" />
+                            <path d="M14 3v4h4M10 12h6M10 16h6" />
+                          </svg>
+                          Bill
+                        </a>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
         <StatBox
           value={loading ? "…" : inr(perFlat)}
           label={`Per flat (÷ ${totalFlats})`}

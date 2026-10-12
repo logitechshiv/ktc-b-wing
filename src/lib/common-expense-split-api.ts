@@ -13,10 +13,16 @@ export interface CommonExpenseCategoryShare {
 }
 
 export interface CommonExpenseItemLine {
+  id?: string;
   category: string;
+  expenseType?: string;
   title: string;
   titleGujarati: string;
   amount: number;
+  date?: string;
+  notes?: string;
+  hasBill?: boolean;
+  billUrl?: string;
 }
 
 export interface CommonExpenseSplitStats {
@@ -112,10 +118,16 @@ function mapExpenseItems(raw: unknown): CommonExpenseItemLine[] {
     .map((row) => {
       const r = row as Record<string, unknown>;
       return {
+        id: String(r.id || ""),
         category: String(r.category || "").trim(),
+        expenseType: String(r.expenseType || "general"),
         title: String(r.title || "").trim(),
         titleGujarati: String(r.titleGujarati || "").trim(),
         amount: Math.max(0, Number(r.amount) || 0),
+        date: String(r.date || ""),
+        notes: String(r.notes || "").trim(),
+        hasBill: Boolean(r.hasBill),
+        billUrl: String(r.billUrl || ""),
       };
     })
     .filter((c) => c.category);
