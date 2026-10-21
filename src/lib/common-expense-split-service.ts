@@ -20,6 +20,8 @@ import {
 } from "@/lib/builder-common-collection-service";
 import { getMonthlyUnsoldFlats } from "@/lib/builder-monthly-unsold-flats-service";
 
+import { parseExpenseSplitScope, type DbExpenseSplitScope } from "@/lib/expense-constants";
+
 export interface CommonExpenseCategoryShare {
   category: string;
   expenseTotal: number;
@@ -32,6 +34,7 @@ export interface CommonExpenseItemLine {
   id?: string;
   category: string;
   expenseType?: string;
+  splitScope?: "all" | "sold";
   title: string;
   titleGujarati: string;
   amount: number;
@@ -45,8 +48,12 @@ export interface CommonExpenseSplitResult {
   month: number;
   year: number;
   totalCommonExpense: number;
+  totalSoldUnsoldExpense: number;
+  totalOnlySoldExpense: number;
   totalFlats: number;
   perFlatShare: number;
+  perFlatShareAll: number;
+  perSoldFlatShare: number;
   expenseCount: number;
   soldFlats: number;
   unsoldFlats: number | null;
@@ -94,6 +101,7 @@ export async function getCommonExpenseSplit(
       {
         category: 1,
         expenseType: 1,
+        splitScope: 1,
         amount: 1,
         expenseTitle: 1,
         expenseTitleGujarati: 1,
@@ -118,9 +126,14 @@ export async function getCommonExpenseSplit(
     sumBuilderCollectedByCategory(m, y),
   ]);
 
-  const categoryTotals = new Map<string, { label: string; total: number }>();
+  const categoryTotals = new Map<
+    string,
+    { label: string; total: number; totalAll: number; totalSold: number }
+  >();
   const expenseItems: CommonExpenseItemLine[] = [];
   let totalCommonExpense = 0;
+  let totalSoldUnsoldExpense = 0;
+  let totalOnlySoldExpense = 0;
   let expenseCount = 0;
 
   for (const doc of monthDocs) {
@@ -128,6 +141,7 @@ export async function getCommonExpenseSplit(
       _id?: { toString(): string };
       category?: string;
       expenseType?: string;
+      splitScope?: string;
       expenseTitle?: string;
       expenseTitleGujarati?: string;
       amount?: number;
@@ -140,8 +154,16 @@ export async function getCommonExpenseSplit(
     if (!categoryNameMatchesIncluded(category, includedCategories)) continue;
     const amount = Number(d.amount) || 0;
     if (!Number.isFinite(amount) || amount <= 0) continue;
+    const splitScope = parseExpenseSplitScope(d.splitScope);
+
     totalCommonExpense += amount;
+    if (splitScope === "sold") {
+      totalOnlySoldExpense += amount;
+    } else {
+      totalSoldUnsoldExpense += amount;
+    }
     expenseCount += 1;
+
     const key = normalizeCategoryName(category);
     const label =
       includedCategories.find((c) => normalizeCategoryName(c) === key) ||
@@ -149,14 +171,26 @@ export async function getCommonExpenseSplit(
     const prev = categoryTotals.get(key);
     if (prev) {
       prev.total += amount;
+      if (splitScope === "sold") {
+        prev.totalSold += amount;
+      } else {
+        prev.totalAll += amount;
+      }
     } else {
-      categoryTotals.set(key, { label, total: amount });
+      categoryTotals.set(key, {
+        label,
+        total: amount,
+        totalAll: splitScope === "sold" ? 0 : amount,
+        totalSold: splitScope === "sold" ? amount : 0,
+      });
     }
+
     const billUrl = d.billImages?.[0] || d.billImage || "";
     expenseItems.push({
       id: d._id ? d._id.toString() : "",
       category: label,
       expenseType: d.expenseType || "general",
+      splitScope,
       title: String(d.expenseTitle || "").trim(),
       titleGujarati: String(d.expenseTitleGujarati || "").trim(),
       amount,
@@ -171,6 +205,12 @@ export async function getCommonExpenseSplit(
   if (!Number.isFinite(totalCommonExpense) || totalCommonExpense < 0) {
     totalCommonExpense = 0;
   }
+  if (!Number.isFinite(totalSoldUnsoldExpense) || totalSoldUnsoldExpense < 0) {
+    totalSoldUnsoldExpense = 0;
+  }
+  if (!Number.isFinite(totalOnlySoldExpense) || totalOnlySoldExpense < 0) {
+    totalOnlySoldExpense = 0;
+  }
 
   const years = yearRows
     .map((r) => Number(r._id))
@@ -181,21 +221,34 @@ export async function getCommonExpenseSplit(
   years.sort((a, b) => b - a);
 
   const totalFlats = COMMON_EXPENSE_TOTAL_FLATS;
-  const perFlatRaw = computePerFlatShare(totalCommonExpense, totalFlats);
-  // Display / multiply using 2-decimal per-flat (e.g. 1310.67 × 32 = 41941.44)
-  const perFlatShare = roundRupeePaise(perFlatRaw);
   const unsold = monthlyUnsoldFlats === null ? 0 : Number(monthlyUnsoldFlats) || 0;
   const sold = soldFlatsFromUnsold(unsold, totalFlats);
-  const memberShare = roundRupeePaise(perFlatShare * sold);
-  const builderShare = roundRupeePaise(perFlatShare * unsold);
+
+  // Sold/Unsold expenses are split across all 52 flats
+  const perFlatRawAll = computePerFlatShare(totalSoldUnsoldExpense, totalFlats);
+  const perFlatShareAll = roundRupeePaise(perFlatRawAll);
+
+  // Builder pays their share of Sold/Unsold expenses only
+  const builderShare = roundRupeePaise(perFlatShareAll * unsold);
+
+  // Members pay their share of Sold/Unsold expenses PLUS 100% of Only Sold expenses
+  const memberAllShare = roundRupeePaise(perFlatShareAll * sold);
+  const memberShare = roundRupeePaise(memberAllShare + totalOnlySoldExpense);
+
+  // Per sold flat calculation
+  const perSoldFlatExtra = sold > 0 ? computePerFlatShare(totalOnlySoldExpense, sold) : 0;
+  const perSoldFlatShare = roundRupeePaise(perFlatShareAll + perSoldFlatExtra);
+
+  // Display / multiply per-flat (for Sold/Unsold share)
+  const perFlatShare = perFlatShareAll;
 
   const categoryRows = Array.from(categoryTotals.entries()).map(([key, row]) => {
-    const catPerFlat = roundRupeePaise(computePerFlatShare(row.total, totalFlats));
+    const catPerFlatAll = roundRupeePaise(computePerFlatShare(row.totalAll, totalFlats));
     return {
       key,
       label: row.label,
       expenseTotal: row.total,
-      exactBuilderShare: roundRupeePaise(catPerFlat * unsold),
+      exactBuilderShare: roundRupeePaise(catPerFlatAll * unsold),
       collected: collectedByCategory.get(key) || 0,
     };
   });
@@ -243,8 +296,12 @@ export async function getCommonExpenseSplit(
     month: m,
     year: y,
     totalCommonExpense,
+    totalSoldUnsoldExpense,
+    totalOnlySoldExpense,
     totalFlats,
     perFlatShare,
+    perFlatShareAll,
+    perSoldFlatShare,
     expenseCount,
     soldFlats: sold,
     unsoldFlats: monthlyUnsoldFlats === null ? null : unsold,

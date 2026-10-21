@@ -16,6 +16,7 @@ export interface CommonExpenseItemLine {
   id?: string;
   category: string;
   expenseType?: string;
+  splitScope?: "all" | "sold";
   title: string;
   titleGujarati: string;
   amount: number;
@@ -29,8 +30,12 @@ export interface CommonExpenseSplitStats {
   month: number;
   year: number;
   totalCommonExpense: number;
+  totalSoldUnsoldExpense: number;
+  totalOnlySoldExpense: number;
   totalFlats: number;
   perFlatShare: number;
+  perFlatShareAll: number;
+  perSoldFlatShare: number;
   expenseCount: number;
   soldFlats: number;
   unsoldFlats: number | null;
@@ -55,8 +60,12 @@ export function emptyCommonExpenseSplit(
     month,
     year,
     totalCommonExpense: 0,
+    totalSoldUnsoldExpense: 0,
+    totalOnlySoldExpense: 0,
     totalFlats: COMMON_EXPENSE_TOTAL_FLATS,
     perFlatShare: 0,
+    perFlatShareAll: 0,
+    perSoldFlatShare: 0,
     expenseCount: 0,
     soldFlats: COMMON_EXPENSE_TOTAL_FLATS,
     unsoldFlats: null,
@@ -121,6 +130,7 @@ function mapExpenseItems(raw: unknown): CommonExpenseItemLine[] {
         id: String(r.id || ""),
         category: String(r.category || "").trim(),
         expenseType: String(r.expenseType || "general"),
+        splitScope: r.splitScope === "sold" ? ("sold" as const) : ("all" as const),
         title: String(r.title || "").trim(),
         titleGujarati: String(r.titleGujarati || "").trim(),
         amount: Math.max(0, Number(r.amount) || 0),
@@ -177,8 +187,12 @@ export async function readCommonExpenseSplit(
         month: Number(data.month) || month,
         year: Number(data.year) || year,
         totalCommonExpense: Number.isFinite(totalCommonExpense) ? totalCommonExpense : 0,
+        totalSoldUnsoldExpense: Math.max(0, Number(data.totalSoldUnsoldExpense) || 0),
+        totalOnlySoldExpense: Math.max(0, Number(data.totalOnlySoldExpense) || 0),
         totalFlats,
         perFlatShare: Number.isFinite(perFlatShare) ? perFlatShare : 0,
+        perFlatShareAll: Math.max(0, Number(data.perFlatShareAll) || perFlatShare),
+        perSoldFlatShare: Math.max(0, Number(data.perSoldFlatShare) || perFlatShare),
         expenseCount: Math.max(0, Number(data.expenseCount) || 0),
         soldFlats,
         unsoldFlats,

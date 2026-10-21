@@ -8,6 +8,8 @@ export interface ExpenseRowData {
   category: string;
   /** general | common — optional for legacy rows */
   expenseType?: "general" | "common" | string;
+  /** all | sold */
+  splitScope?: "all" | "sold" | string;
   name: string;
   amount: number;
   date: string;
@@ -171,6 +173,17 @@ export default function ExpenseRow({
           {e.expenseType === "common" || e.expenseType === "general" ? (
             <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
               {e.expenseType === "common" ? "Common Expense" : "General Expense"}
+            </span>
+          ) : null}
+          {e.splitScope ? (
+            <span
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                e.splitScope === "sold"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-slate-200 bg-slate-100 text-slate-600"
+              }`}
+            >
+              {e.splitScope === "sold" ? "Only Sold Flat" : "Sold / Unsold Flat"}
             </span>
           ) : null}
           <h3 className="text-sm font-bold text-navy sm:text-base leading-snug">

@@ -172,7 +172,9 @@ export default function CommonExpenseSplit() {
   const hasMonthlyUnsoldFlats = stats.hasMonthlyUnsoldFlats;
   const unsold = hasMonthlyUnsoldFlats && Number.isFinite(stats.unsoldFlats) ? Number(stats.unsoldFlats) : 0;
   const sold = soldFlatsFromUnsold(unsold, totalFlats);
-  const soldTotal = roundRupeePaise(perFlat * sold);
+  const soldTotal = Number.isFinite(stats.memberShare)
+    ? stats.memberShare
+    : roundRupeePaise(perFlat * sold);
   const unsoldTotal = Number.isFinite(stats.builderShare)
     ? stats.builderShare
     : roundRupeePaise(perFlat * unsold);
@@ -182,6 +184,7 @@ export default function CommonExpenseSplit() {
   const { start: monthStartDMY, end: monthEndDMY } = monthRangeDMY(month, year);
   const builderFullyCollected =
     !loading && unsold > 0 && unsoldTotal > 0.001 && builderPending <= 0.001;
+  const hasOnlySold = (stats.totalOnlySoldExpense || 0) > 0.001;
 
   const years = useMemo(() => {
     const set = new Set(stats.years.length ? stats.years : [year]);
@@ -325,7 +328,9 @@ export default function CommonExpenseSplit() {
                 {loading
                   ? "Loading…"
                   : stats.expenseCount
-                    ? `${stats.expenseCount} expense entries in common categories`
+                    ? hasOnlySold
+                      ? `${stats.expenseCount} entries (Sold/Unsold: ${inr(stats.totalSoldUnsoldExpense || 0)} · Only Sold: ${inr(stats.totalOnlySoldExpense || 0)})`
+                      : `${stats.expenseCount} expense entries in common categories`
                     : "No common expenses in this month"}
               </div>
             </div>
@@ -369,9 +374,25 @@ export default function CommonExpenseSplit() {
                     key={item.id || idx}
                     className="flex items-start justify-between gap-3 px-3.5 py-2.5 transition hover:bg-slate-50/60"
                   >
-                    <span className="min-w-0 flex-1 break-words text-xs font-bold leading-snug text-navy sm:text-sm">
-                      {displayExpenseTitle(item.titleGujarati, item.title)}
-                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="break-words text-xs font-bold leading-snug text-navy sm:text-sm">
+                          {displayExpenseTitle(item.titleGujarati, item.title)}
+                        </span>
+                        <span
+                          className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold leading-none ${
+                            item.splitScope === "sold"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-slate-200 bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {item.splitScope === "sold" ? "Only Sold Flat" : "Sold / Unsold Flat"}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-slate-400">
+                        {item.category}
+                      </div>
+                    </div>
                     <span className="shrink-0 text-xs font-bold tabular-nums text-rose-500 sm:text-sm">
                       {inr(item.amount)}
                     </span>
@@ -384,7 +405,11 @@ export default function CommonExpenseSplit() {
         <StatBox
           value={loading ? "…" : inr(perFlat)}
           label={`Per flat (÷ ${totalFlats})`}
-          hint="Same share for every flat in B-Wing"
+          hint={
+            hasOnlySold
+              ? `Sold/Unsold share for all ${totalFlats} flats`
+              : "Same share for every flat in B-Wing"
+          }
           tone="sky"
         />
 
@@ -400,7 +425,11 @@ export default function CommonExpenseSplit() {
             <StatBox
               value={loading ? "…" : inr(soldTotal)}
               label="Members’ share"
-              hint={`${sold} × per flat`}
+              hint={
+                hasOnlySold
+                  ? `${sold} × per flat + ${inr(stats.totalOnlySoldExpense)} (Only Sold)`
+                  : `${sold} × per flat`
+              }
               tone="green"
             />
           </div>
@@ -415,7 +444,11 @@ export default function CommonExpenseSplit() {
             <StatBox
               value={loading ? "…" : inr(unsoldTotal)}
               label="Builder share"
-              hint={`${unsold} × per flat`}
+              hint={
+                hasOnlySold
+                  ? `${unsold} × per flat (Sold/Unsold only)`
+                  : `${unsold} × per flat`
+              }
               tone="orange"
             />
           </div>
@@ -523,7 +556,7 @@ export default function CommonExpenseSplit() {
       </div>
 
       <p className="mt-4 rounded-xl bg-slate-50 px-3.5 py-3 text-[11px] leading-relaxed text-slate-500">
-        Formula: Common total ÷ {totalFlats} = per flat. Sold share = per flat × {sold}. Builder share = per flat ×{" "}
+        Formula: Sold/Unsold expenses ÷ {totalFlats} = per flat. Members’ share = (per flat × {sold}) + Only Sold expenses. Builder share = per flat ×{" "}
         {unsold}. Builder payments do not reduce the common expense total.
       </p>
 

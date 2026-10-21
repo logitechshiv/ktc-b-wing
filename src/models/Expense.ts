@@ -1,11 +1,17 @@
 import mongoose, { Schema, models, model, type InferSchemaType, type Model } from "mongoose";
-import { EXPENSE_PAYMENT_METHODS, EXPENSE_TYPES } from "@/lib/expense-constants";
+import {
+  EXPENSE_PAYMENT_METHODS,
+  EXPENSE_TYPES,
+  EXPENSE_SPLIT_SCOPES,
+} from "@/lib/expense-constants";
 
 export {
   EXPENSE_PAYMENT_METHODS,
   EXPENSE_TYPES,
+  EXPENSE_SPLIT_SCOPES,
   type DbExpensePaymentMethod,
   type DbExpenseType,
+  type DbExpenseSplitScope,
 } from "@/lib/expense-constants";
 
 const ExpenseSchema = new Schema(
@@ -25,6 +31,16 @@ const ExpenseSchema = new Schema(
       type: String,
       enum: EXPENSE_TYPES,
       required: false,
+      index: true,
+    },
+    /**
+     * all = Sold / Unsold Flat (split across all 52 flats, builder pays for unsold)
+     * sold = Only Sold Flat (borne only by member sold flats, builder share = 0)
+     */
+    splitScope: {
+      type: String,
+      enum: ["all", "sold"],
+      default: "all",
       index: true,
     },
     /** @deprecated legacy English title — kept for reading old records */

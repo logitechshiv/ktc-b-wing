@@ -19,3 +19,41 @@ export function parseExpenseType(value: unknown): DbExpenseType | null {
   if (raw === "common" || raw === "common_expense") return "common";
   return null;
 }
+
+/** Split scope for expenses: All (Sold & Unsold / 52 flats) or Sold only (Members only) */
+export const EXPENSE_SPLIT_SCOPES = ["all", "sold"] as const;
+export type DbExpenseSplitScope = (typeof EXPENSE_SPLIT_SCOPES)[number];
+
+export const EXPENSE_SPLIT_SCOPE_OPTIONS: {
+  value: DbExpenseSplitScope;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    value: "all",
+    label: "Sold / Unsold Flat",
+    hint: "All 52 flats (Members + Builder)",
+  },
+  {
+    value: "sold",
+    label: "Only Sold Flat",
+    hint: "Sold flats only (No Builder share)",
+  },
+];
+
+export function parseExpenseSplitScope(value: unknown): DbExpenseSplitScope {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (raw === "sold" || raw === "only_sold" || raw === "only_sold_flat") {
+    return "sold";
+  }
+  return "all";
+}
+
+export function expenseSplitScopeLabel(scope?: unknown): string {
+  return parseExpenseSplitScope(scope) === "sold"
+    ? "Only Sold Flat"
+    : "Sold / Unsold Flat";
+}

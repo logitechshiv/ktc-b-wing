@@ -335,7 +335,7 @@ export async function getMonthBuilderPending(params: {
           ],
         },
       },
-      { category: 1, amount: 1 }
+      { category: 1, amount: 1, splitScope: 1 }
     )
       .lean()
       .exec(),
@@ -351,6 +351,8 @@ export async function getMonthBuilderPending(params: {
   for (const doc of monthDocs) {
     const category = String((doc as { category?: string }).category || "");
     if (!categoryNameMatchesIncluded(category, included)) continue;
+    const splitScope = (doc as { splitScope?: string }).splitScope || "all";
+    if (splitScope === "sold") continue; // Only sold flats — builder share is 0
     const amount = Number((doc as { amount?: number }).amount) || 0;
     if (!Number.isFinite(amount) || amount <= 0) continue;
     totalCommonExpense += amount;

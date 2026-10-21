@@ -26,6 +26,8 @@ export interface ExpenseRecord {
   category: string;
   /** null when legacy record has no expenseType yet */
   expenseType: ExpenseType | null;
+  /** all = Sold / Unsold Flat (All flats) | sold = Only Sold Flat */
+  splitScope?: "all" | "sold";
   expenseTitleGujarati: string;
   amount: number;
   displayOrder: number;
@@ -43,6 +45,7 @@ export interface ExpenseRecord {
 export interface ExpenseInput {
   category: string;
   expenseType: ExpenseType;
+  splitScope?: "all" | "sold";
   expenseTitleGujarati: string;
   amount: number;
   paymentMethod: ExpensePaymentMethod;
@@ -81,6 +84,7 @@ function toExpense(raw: Record<string, unknown>): ExpenseRecord {
     id: String(raw.id ?? raw._id),
     category: String(raw.category ?? ""),
     expenseType: parseExpenseType(raw.expenseType),
+    splitScope: raw.splitScope === "sold" ? "sold" : "all",
     expenseTitleGujarati:
       String(raw.expenseTitleGujarati ?? "").trim() || String(raw.expenseTitle ?? "").trim(),
     amount: Number(raw.amount) || 0,

@@ -43,6 +43,7 @@ export default function ExpenseModal({
 }: Props) {
   const [category, setCategory] = useState("");
   const [expenseType, setExpenseType] = useState<ExpenseType | "">("");
+  const [splitScope, setSplitScope] = useState<"all" | "sold">("all");
   const [expenseTitleGujarati, setExpenseTitleGujarati] = useState("");
   const [amount, setAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<ExpensePaymentMethod>("cash");
@@ -60,6 +61,7 @@ export default function ExpenseModal({
     if (mode === "edit" && initial) {
       setCategory(initial.category);
       setExpenseType(initial.expenseType || "");
+      setSplitScope(initial.splitScope === "sold" ? "sold" : "all");
       setExpenseTitleGujarati(initial.expenseTitleGujarati);
       setAmount(initial.amount);
       setPaymentMethod(initial.paymentMethod);
@@ -75,6 +77,7 @@ export default function ExpenseModal({
     } else {
       setCategory(categories[0]?.name || "");
       setExpenseType("");
+      setSplitScope("all");
       setExpenseTitleGujarati("");
       setAmount(0);
       setPaymentMethod("cash");
@@ -84,7 +87,7 @@ export default function ExpenseModal({
     }
     // Only re-init when opening / switching record — not when categories list refreshes
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
-  }, [open, mode, initial?.id]);
+  }, [open, mode, initial?.id, initial?.splitScope]);
 
   if (!open) return null;
 
@@ -159,6 +162,7 @@ export default function ExpenseModal({
     await onSubmit({
       category: category.trim(),
       expenseType,
+      splitScope,
       expenseTitleGujarati: expenseTitleGujarati.trim(),
       amount,
       paymentMethod,
@@ -237,6 +241,54 @@ export default function ExpenseModal({
                   {opt.label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold text-slate-600">
+              Flat Split / Applicable Flats <span className="text-rose-500">*</span>
+            </div>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setSplitScope("all")}
+                className={
+                  "rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition " +
+                  (splitScope === "all"
+                    ? "border-brand bg-brand/5 text-brand"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")
+                }
+              >
+                <div>Sold / Unsold Flat</div>
+                <div
+                  className={
+                    "mt-0.5 text-[10px] font-normal " +
+                    (splitScope === "all" ? "text-brand/70" : "text-slate-400")
+                  }
+                >
+                  All 52 flats (Members + Builder)
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSplitScope("sold")}
+                className={
+                  "rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition " +
+                  (splitScope === "sold"
+                    ? "border-brand bg-brand/5 text-brand"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")
+                }
+              >
+                <div>Only Sold Flat</div>
+                <div
+                  className={
+                    "mt-0.5 text-[10px] font-normal " +
+                    (splitScope === "sold" ? "text-brand/70" : "text-slate-400")
+                  }
+                >
+                  Sold flats only (No Builder share)
+                </div>
+              </button>
             </div>
           </div>
 

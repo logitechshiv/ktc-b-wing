@@ -76,6 +76,7 @@ function toRow(e: ExpenseRecord) {
     id: e.id,
     category: e.category,
     expenseType: e.expenseType || undefined,
+    splitScope: e.splitScope,
     name: displayExpenseTitle(e.expenseTitleGujarati),
     amount: e.amount,
     date: e.expenseDate,

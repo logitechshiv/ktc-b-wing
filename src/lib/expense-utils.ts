@@ -1,12 +1,26 @@
-import type { DbExpensePaymentMethod, DbExpenseType } from "@/lib/expense-constants";
+import type {
+  DbExpensePaymentMethod,
+  DbExpenseType,
+  DbExpenseSplitScope,
+} from "@/lib/expense-constants";
 import {
   EXPENSE_PAYMENT_METHODS,
   EXPENSE_TYPES,
+  EXPENSE_SPLIT_SCOPES,
   parseExpenseType,
+  parseExpenseSplitScope,
 } from "@/lib/expense-constants";
 
-export { parseExpenseType, EXPENSE_TYPE_OPTIONS, EXPENSE_TYPES } from "@/lib/expense-constants";
-export type { DbExpenseType } from "@/lib/expense-constants";
+export {
+  parseExpenseType,
+  parseExpenseSplitScope,
+  expenseSplitScopeLabel,
+  EXPENSE_TYPE_OPTIONS,
+  EXPENSE_TYPES,
+  EXPENSE_SPLIT_SCOPES,
+  EXPENSE_SPLIT_SCOPE_OPTIONS,
+} from "@/lib/expense-constants";
+export type { DbExpenseType, DbExpenseSplitScope } from "@/lib/expense-constants";
 
 export const MAX_EXPENSE_BILL_DOCUMENTS = 10;
 
@@ -69,6 +83,7 @@ export function serializeExpense(doc: {
   _id: { toString(): string; getTimestamp?: () => Date };
   category: string;
   expenseType?: string | null;
+  splitScope?: string | null;
   /** @deprecated legacy English title */
   expenseTitle?: string | null;
   expenseTitleGujarati?: string | null;
@@ -97,6 +112,7 @@ export function serializeExpense(doc: {
     id: doc._id.toString(),
     category: doc.category || "",
     expenseType: parseExpenseType(doc.expenseType),
+    splitScope: parseExpenseSplitScope(doc.splitScope),
     expenseTitleGujarati,
     amount: Number(doc.amount) || 0,
     displayOrder: Number(doc.displayOrder) || 0,
@@ -115,6 +131,7 @@ export function serializeExpense(doc: {
 export interface ExpensePayload {
   category: string;
   expenseType: DbExpenseType;
+  splitScope: DbExpenseSplitScope;
   expenseTitleGujarati: string;
   amount: number;
   paymentMethod: DbExpensePaymentMethod;
@@ -130,6 +147,7 @@ export function validateExpensePayload(
 ): { ok: true; data: ExpensePayload } | { ok: false; message: string } {
   const category = String(body.category ?? "").trim();
   const expenseType = parseExpenseType(body.expenseType);
+  const splitScope = parseExpenseSplitScope(body.splitScope);
   const expenseTitleGujarati =
     String(body.expenseTitleGujarati ?? "").trim() ||
     String(body.expenseTitle ?? "").trim();
@@ -178,6 +196,7 @@ export function validateExpensePayload(
     data: {
       category,
       expenseType,
+      splitScope,
       expenseTitleGujarati,
       amount,
       paymentMethod,

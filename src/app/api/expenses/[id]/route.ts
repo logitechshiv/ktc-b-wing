@@ -77,6 +77,7 @@ export async function PUT(request: Request, context: RouteContext) {
         $set: {
           category: data.category,
           expenseType: data.expenseType,
+          splitScope: data.splitScope,
           expenseTitleGujarati: data.expenseTitleGujarati,
           amount: data.amount,
           paymentMethod: data.paymentMethod,
