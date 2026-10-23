@@ -427,7 +427,7 @@ export default function CommonExpenseSplit() {
               label="Members’ share"
               hint={
                 hasOnlySold
-                  ? `${sold} × per flat + ${inr(stats.totalOnlySoldExpense)} (Only Sold)`
+                  ? `${sold} × per flat + ${inr(stats.totalOnlySoldExpense)} (Sold Only)`
                   : `${sold} × per flat`
               }
               tone="green"
@@ -446,7 +446,7 @@ export default function CommonExpenseSplit() {
               label="Builder share"
               hint={
                 hasOnlySold
-                  ? `${unsold} × per flat (Sold/Unsold only)`
+                  ? `${unsold} × per flat (Unsold only)`
                   : `${unsold} × per flat`
               }
               tone="orange"
